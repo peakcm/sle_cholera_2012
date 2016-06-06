@@ -1,8 +1,8 @@
 #### Header ####
 # Stand-alone program to run the Spatial Wallinga Teunis R effective method
 # Requires:
-      # Case data
-      # Weight Matrix formatted as three columns: id_source, id_destination, weight
+# Case data
+# Weight Matrix formatted as three columns: id_source, id_destination, weight
 
 #### Helper Function: make_arrays ####
 make_arrays <- function(id.var, date.var){
@@ -22,15 +22,6 @@ make_arrays <- function(id.var, date.var){
               denominator_array = denominator_array, 
               quotient_array = quotient_array, 
               id_array_key = id_array_key))
-}
-
-#### Helper Function: calculate_numerator ####
-
-calculate_numerator <- function(infector_candidate, subset.local=subset, generation_interval.local=generation_interval, weights.local=weights, infected_id.local=infected_id, i.local=i, j.local=j){
-  a <- as.numeric(generation_interval.local[subset.local[i.local,"date"]-subset.local[j.local,"date"]+1] )
-  b <- as.numeric(infector_candidate["case"])
-  c <- as.numeric(weights.local[weights.local$id_source %in% infector_candidate["id"] & weights.local$id_destination %in% infected_id, "weight"])
-  return((a * b * c))
 }
 
 #### Calculate quotient array ####
@@ -55,8 +46,13 @@ WT_Spatial <- function(id.var, date.var, case.var, weights, generation_interval,
     df$id <- as.character(id.var)
     names(weights) <- c("id_source", "id_destination", "weight")
     
+    # Remove units with no cases ever
+    df_total <- df %>% group_by(id) %>% summarize(total_cases = sum(case)) %>% filter(total_cases > 0)
+    df <- df %>% filter(id %in% df_total$id)
+    
     if (("all" %in% subset_ids) != 1){
       df <- df[df$id %in% subset_ids,]
+      id.var <- id.var[id.var %in% subset_ids]
       if (length(subset_ids) > 1){
         weights <- weights[weights$id_source %in% subset_ids & weights$id_destination %in% subset_ids,]
       } else { # If only looking at a single location, then you can compare the model performance to the cholera_df Wallinga-Teunis output
@@ -76,25 +72,29 @@ WT_Spatial <- function(id.var, date.var, case.var, weights, generation_interval,
     
     first_day <- min(date.var)
     
+    # Check to make sure the weights file is in the right format
+    if (sum(weights$id_source != rep(id_array_key$id, each = length(id_array_key$id)))>0){"Error with weight matrix"}
+    if (sum(weights$id_destination != rep(id_array_key$id, length(id_array_key$id)))>0){"Error with weight matrix"}
+    
     for (infected_id in unique(df$id)){
       cat("\n", infected_id)
       infected_key <- id_array_key[id_array_key$id == infected_id,"key"]
       
       # First work through one unit
       subset = df %>% filter(id %in% infected_id) 
+      weights_subset = weights %>% filter(id_destination %in% infected_id)
       
       for (i in 1:nrow(subset)) {                  # For each day in that unit
         if (subset[i, "case"] > 0){                # If someone in that unit was infected on that day
-          for (j in 1:i) {                         # For each day when that(those) infection(s) could have occured
-            if (j > (i - max_GT)){ # Only iterate through days with meaningful generation interval probabilities
-              infector_candidates_on_day_j = df[df$date == subset[j,"date"] & df$case > 0,]
-              if (nrow(infector_candidates_on_day_j) > 0){
-                candidate_ids <- as.character(infector_candidates_on_day_j[, "id"])
-                id_array_key_rows <- sapply(candidate_ids, function(x) which(id_array_key$id == x))
-                candidate_keys <- id_array_key[id_array_key_rows,"key"]
+          min_j <- max(1, (i-max_GT))  # Only iterate through days with meaningful generation interval probabilities
+          for (j in min_j:i) {                         # For each day when that(those) infection(s) could have occured
+            infector_candidates_on_day_j = df[df$date == subset[j,"date"] & df$case > 0,]
+            if (nrow(infector_candidates_on_day_j) > 0){
+              candidate_ids <- as.character(infector_candidates_on_day_j[, "id"])
+              candidate_keys <- as.numeric(sapply(candidate_ids, function(x) which(id_array_key$id == x)))
+              generation_interval_value <- as.numeric(generation_interval[subset[i,"date"]-subset[j,"date"]+1] )
                 # The "money" given by somone on day i to people on day j in candidate_id
-                numerator_array[i,j,candidate_keys] <- apply(infector_candidates_on_day_j, 1, function(x) calculate_numerator(x))
-              }
+                numerator_array[i,j,candidate_keys] <- infector_candidates_on_day_j$case * generation_interval_value * weights_subset[candidate_keys,"weight"]
             }
           } #Now we've gone through each candidate infector
           denominator_array[i,1,infected_key] <- sum(numerator_array[i,,]) # The total "money" given by the people infected on day i in id
@@ -108,36 +108,40 @@ WT_Spatial <- function(id.var, date.var, case.var, weights, generation_interval,
       }
     }
   }
-  df = calculate_Reff(df, quotient_array, internal_Reff_array, id_array_key)
-  return(df)
+  
+  df_out = calculate_Reff(df, quotient_array, internal_Reff_array, id_array_key)
+  return(df_out)
 }
 
 #### Calculate Reff from quotient_array ####
 calculate_Reff <- function(df, quotient_array, internal_Reff_array, id_array_key){
+  cat("\nCalculating R effective")
   #initialize R-effective
   df$Reff <- NA
   df$Reff_internal <- NA
   # df$Reff_imported <- NA
   df$Reff_external <- NA
   
-  for (id in unique(id.var)){
-      id_key <- id_array_key[id_array_key$id == id,"key"]
-      
-      # Calculate Reff
-      df[df$id == id, "Reff"] <- apply(quotient_array[,,id_key], 2, sum ) # Total infections attributed to that day
-      df[df$id == id, "Reff"] <- df[df$id == id, "Reff"] / df[df$id == id, "case"]
-      df[df$id == id & is.na(df$Reff)==1, "Reff"] <- 0
-      
-      # Calculate Reff_internal
-      df[df$id == id, "Reff_internal"] <- internal_Reff_array[,,id_key] / df[df$id == id, "case"]
-      df[df$id == id & is.na(df$Reff_internal)==1, "Reff_internal"] <- 0
-    }
-    # Calculate Reff_external
-    df[,"Reff_external"]  <- round(df[,"Reff"] -  df[,"Reff_internal"], 6)
+  for (id in df$id){
+    id_key <- id_array_key[id_array_key$id == id,"key"]
     
-    df$exported_cases <- df$case * df$Reff_external
+    # Calculate Reff
+    df[df$id == id, "Reff"] <- apply(quotient_array[,,id_key], 2, sum ) # Total infections attributed to that day
+    df[df$id == id, "Reff"] <- df[df$id == id, "Reff"] / df[df$id == id, "case"]
+    df[df$id == id & is.na(df$Reff)==1, "Reff"] <- 0
     
-    return(df)
+    # Calculate Reff_internal
+    df[df$id == id, "Reff_internal"] <- internal_Reff_array[,,id_key] / df[df$id == id, "case"]
+    df[df$id == id & is.na(df$Reff_internal)==1, "Reff_internal"] <- 0
+    
+    cat("/nID Number", id)
+  }
+  # Calculate Reff_external
+  df[,"Reff_external"]  <- round(df[,"Reff"] -  df[,"Reff_internal"], 6)
+  
+  df$exported_cases <- df$case * df$Reff_external
+  
+  return(df)
 }
 
 #### Combine Functions ####
@@ -154,5 +158,5 @@ WT_Spatial_Summary <- function(df){
               total_imported_cases = total_cases - total_internal_cases_generated,
               export_import_ratio = total_exported_cases / (0.001+total_imported_cases))
 }
-  
-  
+
+
