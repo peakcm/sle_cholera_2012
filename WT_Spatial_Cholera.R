@@ -130,6 +130,8 @@ cholera_df_use <- WT_Spatial(id.var = cholera_df$CHCODE, date.var = cholera_df$D
 cholera_df_use_summary <- WT_Spatial_Summary(cholera_df_use)
 
 View(cholera_df_use_summary)
+hist(cholera_df_use_summary$days_Reff_over_1, breaks = 20)
+hist(cholera_df_use_summary$export_import_ratio, breaks = 20)
 
 names(cholera_df_use)[1:3] <- c("CHCODE", "Day", "Case")
 
@@ -327,6 +329,10 @@ cholera_df_use %>%
 
 #### Save workspace ####
 save.image("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/sle_cholera_2012/WT_Spatial_Cholera.RData")
+
+#### Export cumulative data for arcmap ####
+cholera_df_use_summary$id <- as.numeric(cholera_df_use_summary$id)
+write.csv(cholera_df_use_summary, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/cholera_Reff_summary.csv", row.names = FALSE)
 
 #####################
 #Calculate variance #
