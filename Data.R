@@ -10,15 +10,16 @@ require(maps)
 library(fields)
 library(geoR)
 library(RColorBrewer)
+library(foreign)
 
-#### Import cholera data ####
+#### Import raw cholera data ####
 cholera_cumulative <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/Admin 3/Cumulative_Data_Chiefdom_New.csv")
 
 cholera_weekly <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/Admin 3/Admin 3 Weekly/Weekly_Data.csv")
 
 cholera_daily <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/Admin 3/Admin 3 Daily/Daily_Cases.csv")
 
-#### Import ebola data ####
+#### Import raw ebola data ####
 ebola_daily_suspected <- read.csv("/Users/peakcm/Dropbox/Ebola/Spatial Analysis SL PNAS/PNAS_Cases_Suspected.csv")
 
 ebola_daily_confirmed <- read.csv("/Users/peakcm/Dropbox/Ebola/Spatial Analysis SL PNAS/PNAS_Cases_Confirmed.csv")
@@ -99,12 +100,37 @@ ggplot() +
   geom_line(data = rainfall_TRMM_nation, aes(x = Date, y = Daily_Rain_7dayMA)) +
   scale_x_date(limits = as.Date(c("2012-01-01", "2013-02-20")), date_breaks = "2 month", date_labels = "%b")
 
+#### Import Climate Prediction Center Rainfall data ####
+setwd("/Users/peakcm/Desktop/Rainfall_Data/dbf/")
+files <- list.files(pattern = "dbf")
+
+df_daily <- df_daily[order(df_daily$CHCODE, df_daily$date),]
+df_daily$rain_avg <- NA
+df_daily$area <- NA
+
+for (file in files){
+  date <- as.Date(strsplit(file, "\\.")[[1]][1], format = "%Y%m%d")
+  rain_data <- read.dbf(file)
+  if (nrow(rain_data) == 151){
+    if (sum(df_daily[df_daily$date == date,"CHCODE"] == rain_data$CHCODE)==151){
+      df_daily[df_daily$date == date, "rain_avg"] <- rain_data$MEAN
+      df_daily[df_daily$date == date, "area"] <- rain_data$AREA
+      cat(".")
+    } else{cat("Error 2 with", file, "\n")}
+  } else{cat("Error 1 with", file, "\n")}
+}
+
+summary(df_daily[is.na(df_daily$rain_avg)==1,"date"])
+
+ggplot(df_daily, aes(x = date, group = CHCODE, y = rain_avg, color = CHCODE)) +
+  geom_point()
+
 #### Helper functions ####
 fcn_lookup <- function(query_1, query_2 = NA, reference, value_column, transformation = "none"){
   out <- 0
   if (is.na(query_2)==0){
     row_1 <- which(reference[,1] %in% query_1) 
-    row_2 <- which(reference[,2] == query_2)
+    row_2 <- which(reference[,2] %in% query_2)
     if (length(row_1) > 0 & length(row_2) > 0){
       out <- value_column[intersect(row_1, row_2)]
     }
@@ -448,4 +474,10 @@ cholera_cumulative_GIS$Last_Case <- as.numeric(as.Date(cholera_cumulative_GIS$La
 names(cholera_cumulative_GIS) <- c("CHCODE", "Cholera_Cases", "Cholera_Onset", "Cholera_Last_Case")
 cholera_cumulative_GIS$t_dur_cholera <- cholera_cumulative_GIS$Cholera_Last_Case - cholera_cumulative_GIS$Cholera_Onset
 write.csv(cholera_cumulative_GIS, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/cholera_cumulative_GIS.csv")
+
+#### Export df_daily ####
+write.csv(df_daily, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_cholera_daily.csv")
+
+#### Read df_daily ####
+df_daily <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_cholera_daily.csv")
 
