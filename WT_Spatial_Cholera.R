@@ -7,9 +7,31 @@ library(reshape2)
 library(ggvis)
 library(forecast)
 library(RColorBrewer)
+library(simcf)     # For panel functions and simulators and lag functions
 
 #### Load Functions ####
 source("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/sle_cholera_2012/WT_Spatial.R")
+
+#### Helper functions ####
+fcn_lookup <- function(query_1, query_2 = NA, reference, value_column, transformation = "none"){
+  out <- 0
+  if (is.na(query_2)==0){
+    row_1 <- which(reference[,1] %in% query_1) 
+    row_2 <- which(reference[,2] %in% query_2)
+    if (length(row_1) > 0 & length(row_2) > 0){
+      out <- value_column[intersect(row_1, row_2)]
+    }
+  } else {
+    out <- value_column[which(reference == query_1)]
+  }
+  if (length(out)==1){
+    if (transformation == "as.character"){
+      return(as.character(out))
+    } else {return(out)}
+  } else {
+    return(0)
+  }
+}
 
 #### Load workspace ####
 load("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/sle_cholera_2012/WT_Spatial_Cholera.RData")
@@ -28,6 +50,13 @@ cholera_df$AR10000 <- NA
 for (chief in unique(cholera_df$CHCODE)){
   cholera_df[cholera_df$CHCODE == chief, "AR10000"] <- cholera_df[cholera_df$CHCODE == chief, "Case"] / cumulative[cumulative$CHCODE == chief, "Population"] * 10000
 }
+
+#### Load df_daily ####
+df_daily <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_cholera_daily.csv")
+
+df_daily$date <- as.Date(df_daily$date, format = "%Y-%m-%d")
+
+df_daily <- df_daily[df_daily$date < as.Date("2013-03-01"),]
 
 #### Spatial networks ####
 
@@ -140,6 +169,37 @@ names(cholera_df_use)[1:3] <- c("CHCODE", "Day", "Case")
 cholera_df_use = cholera_df_use %>% group_by(CHCODE) %>%
   mutate(Reff_7dayMA = ma(Reff, order = 7))
 
+#### Add rainfall data ####
+cholera_df_use$rain_avg <- NA
+cholera_df_use$rain_avg_lag7 <- NA
+cholera_df_use$area <- NA
+
+for (chief in unique(cholera_df_use$CHCODE)){
+  days <- data.frame(cholera_df_use)[cholera_df_use$CHCODE == chief,"Day"]
+  rain <- df_daily[df_daily$CHCODE == chief & df_daily$date %in% days,"rain_avg"]
+  area <- df_daily[df_daily$CHCODE == chief & df_daily$date %in% days,"area"]
+  if (length(rain)==length(days)){
+    cholera_df_use[cholera_df_use$CHCODE == chief, "rain_avg"] <- rain
+    cholera_df_use[cholera_df_use$CHCODE == chief, "rain_avg_lag7"] <- c(rain[8:length(days)], rep(NA,7))
+    cholera_df_use[cholera_df_use$CHCODE == chief, "area"] <- area
+    cat(".")
+  } else {cat("Error\n")}
+}
+
+summary(cholera_df_use$rain_avg)
+summary(cholera_df_use$rain_avg_lag7)
+
+cholera_df_use = cholera_df_use %>% group_by(CHCODE) %>%
+  mutate(rain_7dayMA = ma(rain_avg, order = 7)) %>%
+  mutate(rain_7dayMA_lag7 = ma(rain_7dayMA, order = 7))
+
+ggplot(cholera_df_use, aes(x = Day, group = CHCODE, color = CHCODE)) +
+  geom_point(aes(y = rain_avg)) +
+  geom_line(aes(y = Reff_7dayMA))
+
+ggplot(cholera_df_use, aes(x = rain_7dayMA_lag7, y = Reff_7dayMA)) +
+  geom_point() 
+
 #### Aggregate by Region or Nation ####
 # Add region data
 cholera_df_use$region <- NA
@@ -155,6 +215,8 @@ cholera_df_use_region <- data.frame(cbind(Day = rep(as.Date(as.character(unique(
 cholera_df_use_region$region <- rep(c("East", "North", "South", "West"), each = length(unique(cholera_df_use$Day)))
 cholera_df_use_region$Case <- NA
 cholera_df_use_region$Reff_weighted <- NA
+cholera_df_use_region$rain_weighted <- NA
+
 for (i in 1:nrow(cholera_df_use_region)){
   day <- as.Date(cholera_df_use_region[i,"Day"])
   if (day == min(cholera_df_use_region$Day)){
@@ -162,14 +224,19 @@ for (i in 1:nrow(cholera_df_use_region)){
   }
   Reff <- unlist(cholera_df_use$Reff[cholera_df_use$Day %in% day & cholera_df_use$region %in% region])
   Case <- unlist(cholera_df_use$Case[cholera_df_use$Day %in% day & cholera_df_use$region %in% region])
+  rain_avg <-unlist(cholera_df_use$rain_avg[cholera_df_use$Day %in% day & cholera_df_use$region %in% region]) 
+  area <- unlist(cholera_df_use$area[cholera_df_use$Day %in% day & cholera_df_use$region %in% region]) 
   
   cholera_df_use_region[i, "Case"] <- sum(Case)
   if (sum(Case) > 0){
     cholera_df_use_region[i, "Reff_weighted"] <- weighted.mean(x = Reff , w = Case)
   } else {cholera_df_use_region[i, "Reff_weighted"] <- 0}
+  cholera_df_use_region[i,"rain_weighted"] <- weighted.mean(x = rain_avg , w = area)
 }
 
 cholera_df_use_region$Reff_weighted_7dayMA <- ma(cholera_df_use_region$Reff_weighted, order = 7)
+cholera_df_use_region$rain_weighted_7dayMA <- ma(cholera_df_use_region$rain_weighted, order = 7)
+
 cholera_df_use_region$Day <- as.Date(cholera_df_use_region$Day)
 
 cholera_df_use_region$region <- factor(cholera_df_use_region$region, levels = c("West", "South", "North", "East"))
@@ -178,20 +245,27 @@ cholera_df_use_region$region <- factor(cholera_df_use_region$region, levels = c(
 cholera_df_use_country <- data.frame(cbind(Day = as.Date(as.character(unique(cholera_df_use$Day)))))
 cholera_df_use_country$Case <- NA
 cholera_df_use_country$Reff_weighted <- NA
+cholera_df_use_country$rain_weighted <- NA
+
 for (i in 1:nrow(cholera_df_use_country)){
   
   day <- as.Date(cholera_df_use_country[i,"Day"])
   
   Reff <- unlist(cholera_df_use$Reff[cholera_df_use$Day %in% day])
   Case <- unlist(cholera_df_use$Case[cholera_df_use$Day %in% day])
+  rain <- unlist(cholera_df_use$rain_avg[cholera_df_use$Day %in% day])
+  area <- unlist(cholera_df_use$area[cholera_df_use$Day %in% day])
   
   cholera_df_use_country[i, "Case"] <- sum(Case)
   if (sum(Case) > 0){
     cholera_df_use_country[i, "Reff_weighted"] <- weighted.mean(x = Reff , w = Case)
+    cholera_df_use_country[i, "rain_weighted"] <- weighted.mean(x = rain , w = area)
   } else {cholera_df_use_country[i, "Reff_weighted"] <- 0}
 }
 
 cholera_df_use_country$Reff_weighted_7dayMA <- ma(cholera_df_use_country$Reff_weighted, order = 7)
+cholera_df_use_country$rain_weighted_7dayMA <- ma(cholera_df_use_country$rain_weighted, order = 7)
+
 cholera_df_use_country$Day <- as.Date(cholera_df_use_country$Day)
 
 #### Days with Rt above 1 ####
@@ -245,9 +319,11 @@ ggplot() +
 #### Regional Rt curves ####
 regional_Rt <- ggplot() +
   theme_bw() +
-  geom_area(data = cholera_df_use_region, aes(x = Day, y=Reff_weighted_7dayMA, group = factor(region), fill = factor(region)), stat = "identity", alpha = 1) +
-  # geom_line(data = cholera_df_use, aes(x = Day, y=Reff_7dayMA, group = factor(CHCODE)), size = .3, color = "white", alpha = 0.4) +
+
+  geom_area(data = cholera_df_use_region, aes(x = Day, y=Reff_weighted_7dayMA, group = factor(region), fill = factor(region)), stat = "identity", alpha = .8, color = "black", size = 0.2) +
   geom_hline(yintercept = 1, col = "black", lty = "dashed", size = 0.3) +
+  geom_line(data = cholera_df_use_region, aes(x = Day, y=2*rain_weighted_7dayMA/max(cholera_df_use_region$rain_weighted_7dayMA, na.rm = TRUE), group = factor(region)), size = .2, color = "blue", alpha = 0.3) +
+  
   xlab("Day") + 
   facet_grid(region~.) +
   scale_y_continuous(limits = c(0, 2), breaks = c(0, 1, 2)) +
@@ -303,6 +379,7 @@ national_Rt_epicurve <- ggplot() +
   theme_bw() +
   geom_area(data = cholera_df_use_region_weekly, aes(x = Day, y = Case_weekly/1000, fill = region), stat = "identity", alpha = 0.8) +
   geom_line(data = cholera_df_use_country[cholera_df_use_country$Reff_weighted_7dayMA > 0,], aes(x = Day, y = Reff_weighted_7dayMA), size = 0.3) +
+  # geom_line(data = cholera_df_use_country, aes(x = Day, y = 2*rain_weighted_7dayMA/max(cholera_df_use_country$rain_weighted_7dayMA, na.rm=TRUE)), size = 0.3, color = "blue") +
   scale_x_date(date_breaks = "2 month", date_labels = "%b", name = "Month") +
   geom_hline(yintercept = 1, col = "black", lty = "dashed", size = 0.2) +
   scale_fill_brewer(type = "qual", palette = 8) + #qual palette 8 is good

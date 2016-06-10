@@ -8,15 +8,26 @@ library(ggvis)
 library(forecast)
 library(RColorBrewer)
 
-#### Load Functions ####
-source("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Cholera_SLE_2012/WT_Spatial.R")
-
 #### Load workspace ####
-load("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Data.RData")
-# load("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Cholera_SLE_2012/WT_Spatial_Ebola.RData")
+load("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/sle_cholera_2012/WT_Spatial_Ebola.RData")
+
+#### Load Functions ####
+source("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/sle_cholera_2012/WT_Spatial.R")
+
+#### Load ebola data ####
+setwd('/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/')
+cumulative <- read.csv('ebola_cumulative.csv')
+cumulative <- cumulative[order(-cumulative$Ebola_Cases),]
+
+df_daily <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_cholera_daily.csv")
+df_daily$Day <- as.Date(as.character(as.POSIXct(df_daily$date, format = "%Y-%m-%d")))
+
+df_daily$AR10000 <- NA
+# for (chief in unique(ebola_df$CHCODE)){
+#   ebola_df[ebola_df$CHCODE == chief, "AR10000"] <- ebola_df[ebola_df$CHCODE == chief, "Case"] / cumulative[cumulative$CHCODE == chief, "Population"] * 10000
+# }
 
 #### Spatial networks ####
-
 # Option 1: Gravity model from Wesolowski PLOS Currents Outbreaks
 gravity_model <- function(pop_i, pop_j, dist_ij, k = 3.93, alpha=0.47, beta=0.46, gamma=-1.78){
   k*(pop_i^alpha + pop_j^beta) * dist_ij^gamma
@@ -96,11 +107,11 @@ chiefs <- unique(weights[is.na(weights$CDR)==0,"CHCODE_source"])
 chiefs <- cumulative[order(-cumulative$Cumulative_Cases),"CHCODE"][1:10]
 
 #### Use WT_Spatial to calculate Reff Function ####
-start <- min(df_daily[df_daily$confirmed_ebola > 0,"date"])
-end <- max(df_daily[df_daily$confirmed_ebola > 0,"date"])
-df_daily_ebola <- df_daily[df_daily$date > start & df_daily$date < end,]
+start <- min(df_daily[df_daily$confirmed_ebola > 0,"Day"])
+end <- max(df_daily[df_daily$confirmed_ebola > 0,"Day"])
+df_daily_ebola <- df_daily[df_daily$Day > start & df_daily$Day < end,]
 
-ebola_df_use <- WT_Spatial(id.var = df_daily_ebola$CHCODE, date.var = df_daily_ebola$date, case.var = df_daily_ebola$confirmed_ebola, weights = weights[,c("CHCODE_source", "CHCODE_destination", "inverse_distance_squared")], generation_interval = tau)
+ebola_df_use <- WT_Spatial(id.var = df_daily_ebola$CHCODE, date.var = df_daily_ebola$Day, case.var = df_daily_ebola$confirmed_ebola, weights = weights[,c("CHCODE_source", "CHCODE_destination", "inverse_distance_squared")], generation_interval = tau)
 
 #### Summarize Reff calculations ####
 ebola_df_use_summary <- WT_Spatial_Summary(ebola_df_use)
@@ -113,6 +124,37 @@ names(ebola_df_use)[1:3] <- c("CHCODE", "Day", "Case")
 # R-effective 7-day moving average
 ebola_df_use = ebola_df_use %>% group_by(CHCODE) %>%
   mutate(Reff_7dayMA = ma(Reff, order = 7))
+
+#### Add rainfall data ####
+ebola_df_use$rain_avg <- NA
+ebola_df_use$rain_avg_lag7 <- NA
+ebola_df_use$area <- NA
+
+for (chief in unique(ebola_df_use$CHCODE)){
+  days <- data.frame(ebola_df_use)[ebola_df_use$CHCODE == chief,"Day"]
+  rain <- df_daily[df_daily$CHCODE == chief & df_daily$Day %in% days,"rain_avg"]
+  area <- df_daily[df_daily$CHCODE == chief & df_daily$Day %in% days,"area"]
+  if (length(rain)==length(days)){
+    ebola_df_use[ebola_df_use$CHCODE == chief, "rain_avg"] <- rain
+    ebola_df_use[ebola_df_use$CHCODE == chief, "rain_avg_lag7"] <- c(rain[8:length(days)], rep(NA,7))
+    ebola_df_use[ebola_df_use$CHCODE == chief, "area"] <- area
+    cat(".")
+  } else {cat("Error\n")}
+}
+
+summary(ebola_df_use$rain_avg)
+summary(ebola_df_use$rain_avg_lag7)
+
+ebola_df_use = ebola_df_use %>% group_by(CHCODE) %>%
+  mutate(rain_7dayMA = ma(rain_avg, order = 7)) %>%
+  mutate(rain_7dayMA_lag7 = ma(rain_7dayMA, order = 7))
+
+ggplot(ebola_df_use, aes(x = Day, group = CHCODE, color = CHCODE)) +
+  geom_point(aes(y = rain_avg)) +
+  geom_line(aes(y = Reff_7dayMA))
+
+ggplot(ebola_df_use, aes(x = rain_7dayMA_lag7, y = Reff_7dayMA)) +
+  geom_point() 
 
 #### Aggregate by Region or Nation ####
 # Add region data
@@ -129,6 +171,8 @@ ebola_df_use_region <- data.frame(cbind(Day = rep(as.Date(as.character(unique(eb
 ebola_df_use_region$region <- rep(c("East", "North", "South", "West"), each = length(unique(ebola_df_use$Day)))
 ebola_df_use_region$Case <- NA
 ebola_df_use_region$Reff_weighted <- NA
+ebola_df_use_region$rain_weighted <- NA
+
 for (i in 1:nrow(ebola_df_use_region)){
   day <- as.Date(ebola_df_use_region[i,"Day"])
   if (day == min(ebola_df_use_region$Day)){
@@ -136,14 +180,20 @@ for (i in 1:nrow(ebola_df_use_region)){
   }
   Reff <- unlist(ebola_df_use$Reff[ebola_df_use$Day %in% day & ebola_df_use$region %in% region])
   Case <- unlist(ebola_df_use$Case[ebola_df_use$Day %in% day & ebola_df_use$region %in% region])
+  rain_avg <-unlist(ebola_df_use$rain_avg[ebola_df_use$Day %in% day & ebola_df_use$region %in% region]) 
+  area <- unlist(ebola_df_use$area[ebola_df_use$Day %in% day & ebola_df_use$region %in% region]) 
   
   ebola_df_use_region[i, "Case"] <- sum(Case)
   if (sum(Case) > 0){
     ebola_df_use_region[i, "Reff_weighted"] <- weighted.mean(x = Reff , w = Case)
   } else {ebola_df_use_region[i, "Reff_weighted"] <- 0}
+  ebola_df_use_region[i,"rain_weighted"] <- weighted.mean(x = rain_avg , w = area)
+  
 }
 
 ebola_df_use_region$Reff_weighted_7dayMA <- ma(ebola_df_use_region$Reff_weighted, order = 7)
+ebola_df_use_region$rain_weighted_7dayMA <- ma(ebola_df_use_region$rain_weighted, order = 7)
+
 ebola_df_use_region$Day <- as.Date(ebola_df_use_region$Day)
 
 ebola_df_use_region$region <- factor(ebola_df_use_region$region, levels = c("West", "South", "North", "East"))
@@ -152,20 +202,27 @@ ebola_df_use_region$region <- factor(ebola_df_use_region$region, levels = c("Wes
 ebola_df_use_country <- data.frame(cbind(Day = as.Date(as.character(unique(ebola_df_use$Day)))))
 ebola_df_use_country$Case <- NA
 ebola_df_use_country$Reff_weighted <- NA
+ebola_df_use_country$rain_weighted <- NA
+
 for (i in 1:nrow(ebola_df_use_country)){
   
   day <- as.Date(ebola_df_use_country[i,"Day"])
   
   Reff <- unlist(ebola_df_use$Reff[ebola_df_use$Day %in% day])
   Case <- unlist(ebola_df_use$Case[ebola_df_use$Day %in% day])
+  rain <- unlist(ebola_df_use$rain_avg[ebola_df_use$Day %in% day])
+  area <- unlist(ebola_df_use$area[ebola_df_use$Day %in% day])
   
   ebola_df_use_country[i, "Case"] <- sum(Case)
   if (sum(Case) > 0){
     ebola_df_use_country[i, "Reff_weighted"] <- weighted.mean(x = Reff , w = Case)
+    ebola_df_use_country[i, "rain_weighted"] <- weighted.mean(x = rain , w = area)
   } else {ebola_df_use_country[i, "Reff_weighted"] <- 0}
 }
 
 ebola_df_use_country$Reff_weighted_7dayMA <- ma(ebola_df_use_country$Reff_weighted, order = 7)
+ebola_df_use_country$rain_weighted_7dayMA <- ma(ebola_df_use_country$rain_weighted, order = 7)
+
 ebola_df_use_country$Day <- as.Date(ebola_df_use_country$Day)
 
 #### Days with Rt above 1 ####
@@ -219,12 +276,14 @@ ggplot() +
 #### Regional Rt curves ####
 regional_Rt <- ggplot() +
   theme_bw() +
-  geom_area(data = ebola_df_use_region, aes(x = Day, y=Reff_weighted_7dayMA, group = factor(region), fill = factor(region)), stat = "identity", alpha = 1) +
-  # geom_line(data = ebola_df_use, aes(x = Day, y=Reff_7dayMA, group = factor(CHCODE)), size = .3, color = "white", alpha = 0.4) +
+  
+  geom_area(data = ebola_df_use_region, aes(x = Day, y=Reff_weighted_7dayMA, group = factor(region), fill = factor(region)), stat = "identity", alpha = .8, color = "black", size = 0.2) +
   geom_hline(yintercept = 1, col = "black", lty = "dashed", size = 0.3) +
+  geom_line(data = ebola_df_use_region, aes(x = Day, y=2*rain_weighted_7dayMA/max(ebola_df_use_region$rain_weighted_7dayMA, na.rm = TRUE), group = factor(region)), size = .2, color = "blue", alpha = 0.3) +
+  
   xlab("Day") + 
   facet_grid(region~.) +
-  scale_y_continuous(limits = c(0, 2), breaks = c(0, 1, 2)) +
+  scale_y_continuous(limits = c(0, 3), breaks = c(0, 1, 2)) +
   scale_x_date(date_breaks = "2 month", date_labels = "%b", name = "Month") +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   ylab(expression(R[t])) +
@@ -275,14 +334,14 @@ ebola_df_use_region_weekly <- ebola_df_use_region %>%
 
 national_Rt_epicurve <- ggplot() +
   theme_bw() +
-  geom_area(data = ebola_df_use_region_weekly, aes(x = Day, y = Case_weekly/1000, fill = region), stat = "identity", alpha = 0.8) +
+  geom_area(data = ebola_df_use_region_weekly, aes(x = Day, y = Case_weekly/100, fill = region), stat = "identity", alpha = 0.8) +
   geom_line(data = ebola_df_use_country[ebola_df_use_country$Reff_weighted_7dayMA > 0,], aes(x = Day, y = Reff_weighted_7dayMA), size = 0.3) +
   scale_x_date(date_breaks = "2 month", date_labels = "%b", name = "Month") +
   geom_hline(yintercept = 1, col = "black", lty = "dashed", size = 0.2) +
   scale_fill_brewer(type = "qual", palette = 8) + #qual palette 8 is good
   theme(text = element_text(size=8)) +
   guides(fill = "none") +
-  ylab("Effective Reproductive Numer\nCases (1000s)")
+  ylab("Effective Reproductive Numer\nCases (100s)")
 national_Rt_epicurve
 
 ggsave(plot = national_Rt_epicurve, filename ="/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures/national_Rt_epicurve_ebola.pdf", width = 3, height = 3 )
@@ -297,4 +356,9 @@ ebola_df_use %>%
   layer_paths()
 
 #### Save workspace ####
-save.image("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Cholera_SLE_2012/WT_Spatial_Ebola.RData")
+save.image("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/sle_cholera_2012/WT_Spatial_Ebola.RData")
+
+#### Export cumulative data for arcmap ####
+ebola_df_use_summary$id <- as.numeric(ebola_df_use_summary$id)
+write.csv(ebola_df_use_summary, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_Reff_summary.csv", row.names = FALSE)
+
