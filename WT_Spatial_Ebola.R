@@ -198,11 +198,14 @@ ebola_df_use_region$Day <- as.Date(ebola_df_use_region$Day)
 
 ebola_df_use_region$region <- factor(ebola_df_use_region$region, levels = c("West", "South", "North", "East"))
 
+ebola_df_use_region$Case_7dayMA <- ma(ebola_df_use_region$Case, order = 7)
+
 # Country average
 ebola_df_use_country <- data.frame(cbind(Day = as.Date(as.character(unique(ebola_df_use$Day)))))
 ebola_df_use_country$Case <- NA
 ebola_df_use_country$Reff_weighted <- NA
 ebola_df_use_country$rain_weighted <- NA
+ebola_df_use_country$Case_7dayMA <- NA
 
 for (i in 1:nrow(ebola_df_use_country)){
   
@@ -222,6 +225,7 @@ for (i in 1:nrow(ebola_df_use_country)){
 
 ebola_df_use_country$Reff_weighted_7dayMA <- ma(ebola_df_use_country$Reff_weighted, order = 7)
 ebola_df_use_country$rain_weighted_7dayMA <- ma(ebola_df_use_country$rain_weighted, order = 7)
+ebola_df_use_country$Case_7dayMA <- ma(ebola_df_use_country$Case, order = 7)
 
 ebola_df_use_country$Day <- as.Date(ebola_df_use_country$Day)
 
@@ -330,7 +334,9 @@ ggplot() +
   ylab("Effective Reproductive Numer (7-day Moving Average)\nCases per 100,000 Population")
 
 ebola_df_use_region_weekly <- ebola_df_use_region %>% 
-  group_by(region, Week = cut(Day, "week")) %>% mutate(Case_weekly = sum(Case))
+  group_by(region, Week = cut(Day, "week")) %>%
+  mutate(Case_weekly = sum(Case)) %>%
+  mutate(Case_weekly_7dayMA = sum(Case_7dayMA))
 
 national_Rt_epicurve <- ggplot() +
   theme_bw() +
