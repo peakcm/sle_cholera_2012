@@ -340,14 +340,15 @@ ebola_df_use_region_weekly <- ebola_df_use_region %>%
 
 national_Rt_epicurve <- ggplot() +
   theme_bw() +
-  geom_area(data = ebola_df_use_region_weekly, aes(x = Day, y = Case_weekly/100, fill = region), stat = "identity", alpha = 0.8) +
+  geom_area(data = ebola_df_use_region_weekly, aes(x = Day, y = Case_weekly/100/2, fill = region), stat = "identity", alpha = 0.8) +
   geom_line(data = ebola_df_use_country[ebola_df_use_country$Reff_weighted_7dayMA > 0,], aes(x = Day, y = Reff_weighted_7dayMA), size = 0.3) +
   scale_x_date(date_breaks = "2 month", date_labels = "%b", name = "Month") +
   geom_hline(yintercept = 1, col = "black", lty = "dashed", size = 0.2) +
   scale_fill_brewer(type = "qual", palette = 8) + #qual palette 8 is good
   theme(text = element_text(size=8)) +
+  ylim(0, 3) +
   guides(fill = "none") +
-  ylab("Effective Reproductive Numer\nCases (100s)")
+  ylab("Effective Reproductive Number")
 national_Rt_epicurve
 
 ggsave(plot = national_Rt_epicurve, filename ="/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures/national_Rt_epicurve_ebola.pdf", width = 3, height = 3 )

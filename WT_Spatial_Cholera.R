@@ -384,8 +384,9 @@ national_Rt_epicurve <- ggplot() +
   geom_hline(yintercept = 1, col = "black", lty = "dashed", size = 0.2) +
   scale_fill_brewer(type = "qual", palette = 8) + #qual palette 8 is good
   theme(text = element_text(size=8)) +
+  ylim(0, 3) +
   guides(fill = "none") +
-  ylab("Effective Reproductive Numer\nCases (1000s)")
+  ylab("Effective Reproductive Number")
 national_Rt_epicurve
 
 ggsave(plot = national_Rt_epicurve, filename ="/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures/national_Rt_epicurve.pdf", width = 3, height = 3 )
