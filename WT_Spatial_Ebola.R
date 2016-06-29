@@ -189,6 +189,7 @@ for (i in 1:nrow(ebola_df_use_region)){
   } else {ebola_df_use_region[i, "Reff_weighted"] <- 0}
   ebola_df_use_region[i,"rain_weighted"] <- weighted.mean(x = rain_avg , w = area)
   
+  cat(".")
 }
 
 ebola_df_use_region$Reff_weighted_7dayMA <- ma(ebola_df_use_region$Reff_weighted, order = 7)
@@ -221,6 +222,8 @@ for (i in 1:nrow(ebola_df_use_country)){
     ebola_df_use_country[i, "Reff_weighted"] <- weighted.mean(x = Reff , w = Case)
     ebola_df_use_country[i, "rain_weighted"] <- weighted.mean(x = rain , w = area)
   } else {ebola_df_use_country[i, "Reff_weighted"] <- 0}
+  
+  cat(".")
 }
 
 ebola_df_use_country$Reff_weighted_7dayMA <- ma(ebola_df_use_country$Reff_weighted, order = 7)
@@ -283,14 +286,14 @@ regional_Rt <- ggplot() +
   
   geom_area(data = ebola_df_use_region, aes(x = Day, y=Reff_weighted_7dayMA, group = factor(region), fill = factor(region)), stat = "identity", alpha = .8, color = "black", size = 0.2) +
   geom_hline(yintercept = 1, col = "black", lty = "dashed", size = 0.3) +
-  geom_line(data = ebola_df_use_region, aes(x = Day, y=2*rain_weighted_7dayMA/max(ebola_df_use_region$rain_weighted_7dayMA, na.rm = TRUE), group = factor(region)), size = .2, color = "blue", alpha = 0.3) +
+  # geom_line(data = ebola_df_use_region, aes(x = Day, y=2*rain_weighted_7dayMA/max(ebola_df_use_region$rain_weighted_7dayMA, na.rm = TRUE), group = factor(region)), size = .2, color = "blue", alpha = 0.3) +
   
   xlab("Day") + 
   facet_grid(region~.) +
-  scale_y_continuous(limits = c(0, 3), breaks = c(0, 1, 2)) +
+  scale_y_continuous(limits = c(0, 3), breaks = c(0, 1, 2,3)) +
   scale_x_date(date_breaks = "2 month", date_labels = "%b", name = "Month") +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
-  ylab(expression(R[t])) +
+  ylab(expression(paste("Effective Reproductive Number ", (R[t])))) +
   scale_fill_brewer(type = "qual", palette = 8) + #qual palette 8 is good
   theme(strip.background = element_blank(),
         strip.text.y = element_blank()) +
@@ -348,7 +351,7 @@ national_Rt_epicurve <- ggplot() +
   theme(text = element_text(size=8)) +
   ylim(0, 3) +
   guides(fill = "none") +
-  ylab("Effective Reproductive Number")
+  ylab(expression(paste("Effective Reproductive Number ", (R[t]))))
 national_Rt_epicurve
 
 ggsave(plot = national_Rt_epicurve, filename ="/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures/national_Rt_epicurve_ebola.pdf", width = 3, height = 3 )
