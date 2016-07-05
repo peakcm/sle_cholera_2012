@@ -134,6 +134,7 @@ calculate_Reff <- function(df, quotient_array, internal_Reff_array, id_array_key
     df[df$id == id, "Reff_internal"] <- internal_Reff_array[,,id_key] / df[df$id == id, "case"]
     df[df$id == id & is.na(df$Reff_internal)==1, "Reff_internal"] <- 0
     
+    cat("/nID Number", id)
   }
   # Calculate Reff_external
   df[,"Reff_external"]  <- round(df[,"Reff"] -  df[,"Reff_internal"], 6)
