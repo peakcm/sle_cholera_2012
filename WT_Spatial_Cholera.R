@@ -326,7 +326,7 @@ regional_Rt <- ggplot() +
   
   xlab("Day") + 
   facet_grid(region~.) +
-  scale_y_continuous(limits = c(0, 3), breaks = c(0, 1, 2,3)) +
+  scale_y_continuous(limits = c(0, 3), breaks = c(0, 1, 2, 3), labels = c("", 1, "", 3)) +
   scale_x_date(date_breaks = "2 month", date_labels = "%b", name = "Month") +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   ylab(expression(paste("Effective Reproductive Number ", (R[t])))) +
@@ -334,6 +334,7 @@ regional_Rt <- ggplot() +
   theme(strip.background = element_blank(),
         strip.text.y = element_blank()) +
   theme(text = element_text(size=8)) +
+  theme(axis.title.y = element_text(size=5)) +
   guides(fill = "none")
 regional_Rt
 
