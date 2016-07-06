@@ -58,7 +58,7 @@ fcn_transform_spline.correlog_output <- function(input){
              ymax = input$boot$boot.summary$predicted$y["0.975",])
 }
 
-#### Function to plot ####
+#### Function to ggplot ####
 fcn_ggplot_spline.correlog <- function(fit1, fit2 = NA, title = NA, limits = NA, color = NA){
   fit1 <- fcn_transform_spline.correlog_output(fit1)
   
@@ -70,8 +70,8 @@ fcn_ggplot_spline.correlog <- function(fit1, fit2 = NA, title = NA, limits = NA,
     geom_hline(yintercept = 0, color = "black", lty = "dashed") +
     
     geom_ribbon(data = fit1, aes(x,ymin=ymin, ymax=ymax), fill = color[1], alpha = 0.2) +
-    geom_line(data = fit1, aes(x,y), col = colors[1]) +
     
+    theme(text = element_text(size = 8)) +
     ylab("Correlation") + xlab("Distance (km)") +
     ggtitle(title)
   
@@ -79,14 +79,23 @@ fcn_ggplot_spline.correlog <- function(fit1, fit2 = NA, title = NA, limits = NA,
     fit2 <- fcn_transform_spline.correlog_output(fit2)
     
     plot <- plot +  
-      geom_ribbon(data = fit2, aes(x,ymin=ymin, ymax=ymax), fill = color[2], alpha = 0.2) +
-      geom_line(data = fit2, aes(x,y), col = colors[2])
+      geom_ribbon(data = fit2, aes(x,ymin=ymin, ymax=ymax), fill = color[2], alpha = 0.4) +
+      
+      geom_line(data = fit1, aes(x,y), col = color[1]) + #Add the first line again, so it's on top of the shaded region 2
+      
+      geom_line(data = fit2, aes(x,y), col = color[2])
   }
   
   if (is.na(fit2)[1] !=1){ plot <- plot + coord_cartesian(ylim=limits)
   }
   
   return(plot)
+}
+
+#### Function ggplot colors ####
+ggplotColours <- function(n = 6, h = c(0, 360) + 15){
+  if ((diff(h) %% 360) < 1) h[2] <- h[2] - 360/n
+  hcl(h = (seq(h[1], h[2], length = n)), c = 100, l = 65)
 }
 
 #### Outcome: Day of first case ####
@@ -128,11 +137,19 @@ fit4e <- fcn_run_spline.correlog(x = centroids$POINT_X, y = centroids$POINT_Y, d
 #### GGplot both diseases ####
 limits = c(-1,1)
 color = c("red", "blue")
+color = ggplotColours(2)
 
-fcn_ggplot_spline.correlog(fit1 = fit1c, fit2 = fit1e, title = "Outbreak Onset", limits = limits, color = color)
-fcn_ggplot_spline.correlog(fit1 = fit2c, fit2 = fit2e, title = "Cumulative Cases", limits = limits, color = color)
-fcn_ggplot_spline.correlog(fit1 = fit3c, fit2 = fit3e, title = "Cumulative Attack Rate", limits = limits, color = color)
-fcn_ggplot_spline.correlog(fit1 = fit4c, fit2 = fit4e, title = "Disease Presence", limits = limits, color = color)
+ggplot1 <- fcn_ggplot_spline.correlog(fit1 = fit1c, fit2 = fit1e, title = "Outbreak Onset", limits = limits, color = color)
+ggplot2 <- fcn_ggplot_spline.correlog(fit1 = fit2c, fit2 = fit2e, title = "Cumulative Cases", limits = limits, color = color)
+ggplot3 <- fcn_ggplot_spline.correlog(fit1 = fit3c, fit2 = fit3e, title = "Cumulative Attack Rate", limits = limits, color = color)
+ggplot4 <- fcn_ggplot_spline.correlog(fit1 = fit4c, fit2 = fit4e, title = "Disease Presence", limits = limits, color = color)
+
+setwd("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures")
+ggsave(filename = "spline.correlog_Outbreak_Onset.pdf", ggplot1, device = "pdf", width = 3, height = 1.5, units = "in")
+ggsave(filename = "spline.correlog_Cumulative_Cases.pdf", ggplot2, device = "pdf", width = 3, height = 1.5, units = "in")
+ggsave(filename = "spline.correlog_Cumulative_Attack_Rate.pdf", ggplot3, device = "pdf", width = 3, height = 1.5, units = "in")
+ggsave(filename = "spline.correlog_Disease_Presence.pdf", ggplot4, device = "pdf", width = 3, height = 1.5, units = "in")
+
 
 #### Experimental ####
 # Try Sncf function
