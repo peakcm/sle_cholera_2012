@@ -13,117 +13,23 @@ library(RColorBrewer)
 library(foreign)
 
 #### Import raw cholera data ####
-cholera_cumulative <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/Admin 3/Cumulative_Data_Chiefdom_New.csv")
-
-cholera_weekly <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/Admin 3/Admin 3 Weekly/Weekly_Data.csv")
-
-cholera_daily <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/Admin 3/Admin 3 Daily/Daily_Cases.csv")
+cholera_line_list <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Original Work/Epidemics/Data_Files/Cholera_Line_List.csv")
 
 #### Import raw ebola data ####
-ebola_daily_suspected <- read.csv("/Users/peakcm/Dropbox/Ebola/Spatial Analysis SL PNAS/PNAS_Cases_Suspected.csv")
+ebola_daily_suspected <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Original Work/Epidemics/Data_Files/PNAS_Cases_Suspected.csv")
 
-ebola_daily_confirmed <- read.csv("/Users/peakcm/Dropbox/Ebola/Spatial Analysis SL PNAS/PNAS_Cases_Confirmed.csv")
+ebola_daily_confirmed <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Original Work/Epidemics/Data_Files/PNAS_Cases_Confirmed.csv")
 
 #### Import population data ####
-population_2012 <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Raw/Population/SL_Chiefdom_Codes_Pop.csv")
-
-population_2014 <- read.csv("/Users/peakcm/Dropbox/Ebola/Spatial Analysis SL PNAS/PNAS_Population.csv")
+population <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Original Work/Epidemics/Data_Files/PNAS_Population_Adapted.csv")
 
 #### Import chiefdom shapefiles ####
-setwd("/Users/peakcm/Documents/2014 Cholera OCV/Data - Raw/GIS Shapefiles/Shapefiles/Admin 3/")
+setwd("/Users/peakcm/Documents/2014 Cholera OCV/Original Work/Epidemics/Data_Files/Admin 3")
 Admin3 <- readOGR(".","SLE_Adm3_1m_gov_WesternAreaMerged")
 Admin3.map <- fortify(Admin3)
 ggplot(Admin3.map, aes(x = long, y = lat, group=group)) + 
   geom_path() +
   coord_fixed()
-
-#### Import TRMM rainfall data ####
-# Note that 4299 does NOT have a point within it
-
-rainfall_TRMM <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Raw/Rainfall/TRMM Precipitation Data/TRMM_SL_2012_2013_Rainfall.csv")
-names(rainfall_TRMM) <- c("Number", "Date", "Lat", "Long", "Rain")
-
-# Wrangle into GIS format
-rainfall_TRMM.points <- rainfall_TRMM
-coordinates(rainfall_TRMM.points) <- c("Long", "Lat")
-proj4string(rainfall_TRMM.points) <- proj4string(Admin3)
-
-rainfall_TRMM.points$CHCODE <- over(rainfall_TRMM.points, Admin3)$CHCODE
-rainfall_TRMM.points <- rainfall_TRMM.points[is.na(rainfall_TRMM.points$CHCODE)==0,]
-View(rainfall_TRMM.points)
-
-# Summarize
-rainfall_TRMM <- as.data.frame(rainfall_TRMM.points)
-rainfall_TRMM$Date <- as.Date(rainfall_TRMM$Date, format = "%d-%B-%y")
-rainfall_TRMM$Region <- factor(substr(as.character(rainfall_TRMM$CHCODE),1,1), levels = c(4,3,2,1), labels = c("West", "South", "North", "East"))
-rainfall_TRMM <- rainfall_TRMM[order(rainfall_TRMM$Date),]
-  
-rainfall_TRMM_chiefdom <- rainfall_TRMM %>% group_by(Date, CHCODE) %>%
-  summarize(Daily_Rain = mean(Rain))
-rainfall_TRMM_chiefdom <- rainfall_TRMM_chiefdom %>% group_by(CHCODE) %>%
-  mutate(Daily_Rain_7dayMA = ma(Daily_Rain, order = 7))
-rainfall_TRMM_chiefdom <- as.data.frame(rainfall_TRMM_chiefdom)
-
-rainfall_TRMM_region <- rainfall_TRMM %>% group_by(Date, Region) %>%
-  summarize(Daily_Rain = mean(Rain))
-rainfall_TRMM_region <- rainfall_TRMM_region %>% group_by(Region) %>%
-  mutate(Daily_Rain_7dayMA = ma(Daily_Rain, order = 7)) %>%
-  mutate(Daily_Rain_14dayMA = ma(Daily_Rain, order = 14)) %>%
-  mutate(Daily_Rain_28dayMA = ma(Daily_Rain, order = 28))
-  
-rainfall_TRMM_nation <- rainfall_TRMM %>% group_by(Date) %>%
-  summarize(Daily_Rain = mean(Rain))
-rainfall_TRMM_nation <- rainfall_TRMM_nation %>%
-  mutate(Daily_Rain_7dayMA = ma(Daily_Rain, order = 7)) %>%
-  mutate(Daily_Rain_14dayMA = ma(Daily_Rain, order = 14)) %>%
-  mutate(Daily_Rain_28dayMA = ma(Daily_Rain, order = 28))
-
-# Chiefdom
-ggplot() +
-  theme_bw() +
-  geom_line(data = rainfall_TRMM_chiefdom[rainfall_TRMM_chiefdom$CHCODE == 4199,], aes(x = Date, y = Daily_Rain, group = CHCODE), color = "grey") +
-  geom_line(data = rainfall_TRMM_chiefdom[rainfall_TRMM_chiefdom$CHCODE == 4199,], aes(x = Date, y = Daily_Rain_7dayMA, group = CHCODE)) +
-  scale_x_date(limits = as.Date(c("2012-01-01", "2013-02-20")), date_breaks = "2 month", date_labels = "%b")
-
-# Region
-ggplot() +
-  theme_bw() +
-  geom_line(data = rainfall_TRMM_region, aes(x = Date, y = Daily_Rain_7dayMA, group = Region, color = Region, fill = Region)) +
-  facet_grid(Region~.) +
-  scale_fill_brewer(type = "qual", palette = 8) + #qual palette 8 is good
-  scale_color_brewer(type = "qual", palette = 8) + #qual palette 8 is good
-  scale_x_date(limits = as.Date(c("2012-01-01", "2013-02-20")), date_breaks = "2 month", date_labels = "%b")
-
-# Nation
-ggplot() +
-  theme_bw() +
-  geom_line(data = rainfall_TRMM_nation, aes(x = Date, y = Daily_Rain_7dayMA)) +
-  scale_x_date(limits = as.Date(c("2012-01-01", "2013-02-20")), date_breaks = "2 month", date_labels = "%b")
-
-#### Import Climate Prediction Center Rainfall data ####
-setwd("/Users/peakcm/Desktop/Rainfall_Data/dbf/")
-files <- list.files(pattern = "dbf")
-
-df_daily <- df_daily[order(df_daily$CHCODE, df_daily$date),]
-df_daily$rain_avg <- NA
-df_daily$area <- NA
-
-for (file in files){
-  date <- as.Date(strsplit(file, "\\.")[[1]][1], format = "%Y%m%d")
-  rain_data <- read.dbf(file)
-  if (nrow(rain_data) == 151){
-    if (sum(df_daily[df_daily$date == date,"CHCODE"] == rain_data$CHCODE)==151){
-      df_daily[df_daily$date == date, "rain_avg"] <- rain_data$MEAN
-      df_daily[df_daily$date == date, "area"] <- rain_data$AREA
-      cat(".")
-    } else{cat("Error 2 with", file, "\n")}
-  } else{cat("Error 1 with", file, "\n")}
-}
-
-summary(df_daily[is.na(df_daily$rain_avg)==1,"date"])
-
-ggplot(df_daily, aes(x = date, group = CHCODE, y = rain_avg, color = CHCODE)) +
-  geom_point()
 
 #### Helper functions ####
 fcn_lookup <- function(query_1, query_2 = NA, reference, value_column, transformation = "none"){
@@ -146,7 +52,25 @@ fcn_lookup <- function(query_1, query_2 = NA, reference, value_column, transform
   }
 }
 
-#### Manipulate ebola suspected data ####
+#### Manipulate line list cholera data to daily and cumulative cholera data ####
+cholera_line_list$date <- as.Date(cholera_line_list$Date_seen, format = "%m/%d/%y")
+cholera_line_list$date_num <- as.numeric(cholera_line_list$date ) - min(as.numeric(cholera_line_list$date ))
+
+cholera_line_list <- cholera_line_list[,c("Age", "Age.group", "Sex", "District", "Chiefdom", "Temp_CHCODE", "date", "date_num")]
+names(cholera_line_list)[6]
+names(cholera_line_list)[6] <- "CHCODE"
+
+cholera_line_list_melt <- melt(cholera_line_list, id.vars = c("Chiefdom", "District", "CHCODE", "date", "date_num"))
+
+cholera_daily <- dcast(cholera_line_list_melt, formula = CHCODE + Chiefdom + District + date + date_num~ variable, fun.aggregate = length)
+cholera_daily <- cholera_daily[,c("CHCODE", "Chiefdom", "District", "date", "date_num", "Age")]
+names(cholera_daily) <- c("CHCODE", "Chiefdom", "District", "date", "date_num", "cases")
+
+cholera_cumulative <- dcast(cholera_line_list_melt, formula = CHCODE + Chiefdom + District ~ variable, fun.aggregate = length)
+cholera_cumulative <- cholera_cumulative[,c("CHCODE", "Chiefdom", "District", "Age")]
+names(cholera_cumulative) <- c("CHCODE", "Chiefdom", "District", "cases")
+
+#### Manipulate line list ebola suspected data to daily and cumulative ####
 ebola_daily_suspected$date <- as.Date(ebola_daily_suspected$Date.of.symptom.onset, format = "%d-%b-%y")
 ebola_daily_suspected$date_num <- as.numeric(ebola_daily_suspected$date ) - min(as.numeric(ebola_daily_suspected$date ))
 
@@ -162,7 +86,7 @@ ebola_daily_suspected_dcast_cumulative <- dcast(ebola_daily_suspected_melt, form
 ebola_daily_suspected_dcast_cumulative <- ebola_daily_suspected_dcast_cumulative[,c("CHCODE", "Chiefdom", "District", "Age")]
 names(ebola_daily_suspected_dcast_cumulative) <- c("CHCODE", "Chiefdom", "District", "cases")
 
-#### Manipulate ebola confirmed data ####
+#### Manipulate line list ebola confirmed data to daily and cumulative ####
 ebola_daily_confirmed$date <- as.Date(ebola_daily_confirmed$Date.of.symptom.onset, format = "%d-%b-%y")
 ebola_daily_confirmed$date_num <- as.numeric(ebola_daily_confirmed$date ) - min(as.numeric(ebola_daily_confirmed$date ))
 
@@ -203,29 +127,24 @@ for (row in 1:nrow(ebola_daily_confirmed_dcast_cumulative)){
     ebola_daily_confirmed_dcast_cumulative[row, "t_dur"] <- ebola_daily_confirmed_dcast_cumulative[row, "Last_Case"] - ebola_daily_confirmed_dcast_cumulative[row, "First_Case"]
 }
 
+#### Make sure we have all the cholera cases ####
+sum(cholera_daily$cases) == 22691
+
 #### Manipulate cholera data ####
-cholera_daily$date <- as.Date(cholera_daily$Day, format = "%m/%d/%y")
-
-cholera_cumulative$onset_num <- as.numeric(as.Date(cholera_cumulative$First_Case, format = "%m/%d/%Y"))
-cholera_cumulative$onset_num <- cholera_cumulative$onset_num - as.numeric(as.Date("1/1/2012", format = "%m/%d/%Y"))
-
+cholera_cumulative$First_Case <- NA
 cholera_cumulative$Last_Case <- NA
-cholera_cumulative$tdur <- NA
+cholera_cumulative$t_dur <- NA
+
 for (row in 1:nrow(cholera_cumulative)){
-  if (cholera_cumulative[row, "Any_Case"] == 1){
-    chief <- cholera_cumulative[row, "CHCODE"]
-    days <- cholera_daily[cholera_daily$CHCODE == chief & cholera_daily$Case > 0, "Day"]
-    if (as.Date(cholera_cumulative[row, "First_Case"], format = "%m/%d/%Y") == as.Date(days[1], format = "%m/%d/%y")){
-      cholera_cumulative[row, "Last_Case"] <- as.Date(days[length(days)], format = "%m/%d/%y")
-      cholera_cumulative[row, "tdur"] <- cholera_cumulative[row, "Last_Case"]  - as.numeric(as.Date(cholera_cumulative[row, "First_Case"], format = "%m/%d/%Y"))
-    } else {cat(".")}
-  }
+  chief <- cholera_cumulative[row, "CHCODE"]
+  days <- cholera_daily[cholera_daily$cases > 0 & cholera_daily$CHCODE == chief, "date_num"]
+  cholera_cumulative[row, "First_Case"] <- days[1]
+  cholera_cumulative[row, "Last_Case"] <- days[length(days)]
+  cholera_cumulative[row, "t_dur"] <- cholera_cumulative[row, "Last_Case"] - cholera_cumulative[row, "First_Case"]
 }
 
-cholera_cumulative$Last_Case <- as.numeric(cholera_cumulative$Last_Case - min(cholera_cumulative[is.na(cholera_cumulative$Last_Case)==0, "Last_Case"]))
-
 #### Combine daily datasets ####
-CHCODEs <- unique(c(ebola_daily_suspected_dcast_cumulative$CHCODE, ebola_daily_confirmed_dcast_cumulative$CHCODE, cholera_daily$CHCODE))
+CHCODEs <- population$CHCODE
 date_start <- min(cholera_daily$date)
 date_end <- max(ebola_daily_suspected$date)
 dates <- seq(from = date_start, to = date_end, by = 1)
@@ -289,6 +208,33 @@ for (chief in unique(df_daily$CHCODE)){
     df_daily[df_daily$CHCODE == chief, "total_ebola_cumulative_proportion"] <- df_daily[df_daily$CHCODE == chief, "total_ebola_cumulative"]/max(df_daily[df_daily$CHCODE == chief, "total_ebola_cumulative"])
   }
 }
+
+#### Add Climate Prediction Center Rainfall data (New way) ####
+setwd("/Users/peakcm/Documents/2014 Cholera OCV/Original Work/Epidemics/Data_Files/Climate Prediction Center/dbf")
+files <- list.files(pattern = "dbf")
+
+df_daily <- df_daily[order(df_daily$CHCODE, df_daily$date),]
+df_daily$rain_avg <- NA
+df_daily$area <- NA
+
+for (file in files){
+  date <- as.Date(strsplit(file, "\\.")[[1]][1], format = "%Y%m%d")
+  if (date %in% df_daily$date){
+    rain_data <- read.dbf(file)
+    if (nrow(rain_data) == 151){
+      if (sum(df_daily[df_daily$date == date,"CHCODE"] == rain_data$CHCODE)==151){
+        df_daily[df_daily$date == date, "rain_avg"] <- rain_data$MEAN
+        df_daily[df_daily$date == date, "area"] <- rain_data$AREA
+        cat(".")
+      } else{cat("Error 2 with", file, "\n")}
+    } else{cat("Error 1 with", file, "\n")}
+  } else{cat("x")}
+}
+
+summary(df_daily[is.na(df_daily$rain_avg)==1,"date"])
+
+ggplot(df_daily, aes(x = date, group = CHCODE, y = rain_avg, color = CHCODE)) +
+  geom_point()
 
 #### Confirm combined daily dataset is correct ####
 chief <- 3101
