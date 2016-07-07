@@ -174,16 +174,23 @@ cholera_df_use$rain_avg <- NA
 cholera_df_use$rain_avg_lag7 <- NA
 cholera_df_use$area <- NA
 
+df_daily$Day <- df_daily$date
+
 for (chief in unique(cholera_df_use$CHCODE)){
   days <- data.frame(cholera_df_use)[cholera_df_use$CHCODE == chief,"Day"]
   rain <- df_daily[df_daily$CHCODE == chief & df_daily$date %in% days,"rain_avg"]
   area <- df_daily[df_daily$CHCODE == chief & df_daily$date %in% days,"area"]
-  if (length(rain)==length(days)){
-    cholera_df_use[cholera_df_use$CHCODE == chief, "rain_avg"] <- rain
-    cholera_df_use[cholera_df_use$CHCODE == chief, "rain_avg_lag7"] <- c(rain[8:length(days)], rep(NA,7))
-    cholera_df_use[cholera_df_use$CHCODE == chief, "area"] <- area
-    cat(".")
-  } else {cat("Error\n")}
+  
+  cholera_df_use[cholera_df_use$CHCODE == chief,"rain_avg"] <- left_join(cholera_df_use[cholera_df_use$CHCODE == chief,], 
+                                                                         df_daily[df_daily$CHCODE == chief,c("Day", "rain_avg")], by = "Day")$rain_avg.y
+  
+  cholera_df_use[cholera_df_use$CHCODE == chief,"rain_avg_lag7"] <- c(left_join(cholera_df_use[cholera_df_use$CHCODE == chief,], 
+                                                                         df_daily[df_daily$CHCODE == chief,c("Day", "rain_avg")], by = "Day")$rain_avg.y[8:length(days)], rep(NA,7))
+  
+  cholera_df_use[cholera_df_use$CHCODE == chief,"area"] <- left_join(cholera_df_use[cholera_df_use$CHCODE == chief,], 
+                                                                         df_daily[df_daily$CHCODE == chief,c("Day", "area")], by = "Day")$area.y
+  
+  cat(".")
 }
 
 summary(cholera_df_use$rain_avg)
@@ -232,6 +239,7 @@ for (i in 1:nrow(cholera_df_use_region)){
     cholera_df_use_region[i, "Reff_weighted"] <- weighted.mean(x = Reff , w = Case)
   } else {cholera_df_use_region[i, "Reff_weighted"] <- 0}
   cholera_df_use_region[i,"rain_weighted"] <- weighted.mean(x = rain_avg , w = area)
+  cat(".")
 }
 
 cholera_df_use_region$Reff_weighted_7dayMA <- ma(cholera_df_use_region$Reff_weighted, order = 7)
@@ -261,6 +269,7 @@ for (i in 1:nrow(cholera_df_use_country)){
     cholera_df_use_country[i, "Reff_weighted"] <- weighted.mean(x = Reff , w = Case)
     cholera_df_use_country[i, "rain_weighted"] <- weighted.mean(x = rain , w = area)
   } else {cholera_df_use_country[i, "Reff_weighted"] <- 0}
+  cat(".")
 }
 
 cholera_df_use_country$Reff_weighted_7dayMA <- ma(cholera_df_use_country$Reff_weighted, order = 7)
@@ -272,7 +281,7 @@ cholera_df_use_country$Day <- as.Date(cholera_df_use_country$Day)
 View(cholera_df_use[cholera_df_use$Reff > 1,])
 length(unlist(unique(cholera_df_use[cholera_df_use$Reff > 1,"CHCODE"])))
 # 106 chiefdoms had Reff > 1 (with identity matrix)
-# 37 chiefdoms had Reff > 1 (with inverse_distance_squared matrix)
+# 38 chiefdoms had Reff > 1 (with inverse_distance_squared matrix)
 
 ggplot(cholera_df_use[cholera_df_use$Reff > 1,], aes(x=Day)) + geom_bar() + ggtitle("Number of Chiefdoms with Reff > 1") 
 # At the peak, 16 chiefdoms had Reff>1 (with identity matrix)
