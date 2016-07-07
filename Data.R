@@ -31,6 +31,11 @@ ggplot(Admin3.map, aes(x = long, y = lat, group=group)) +
   geom_path() +
   coord_fixed()
 
+#### Import 2008 DHS data ####
+DHS_2008 <- read.dbf("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/DHS_2008_Closest_CHCODE.dbf")
+names(DHS_2008) <- c("Object_ID", "Join_Count", "Target_FID", "v001", "Lat", "Lon", "Urban", "Prop_Urban", "Education", "v113", "Prop_Improved_Water_Source", "v115", "v116", "Prop_Improved_Toilet", "SES_Score", "Household_Size", "v155", "Shared_Toilet", "v190", "Wealth_Index","v191_2", "Object_ID", "ID", "Chiefdom", "District", "CHCODE", "Orig_FID", "Shape_leng")
+DHS_2008 <- DHS_2008[,c("CHCODE", "Prop_Urban", "Education", "Prop_Improved_Water_Source", "Prop_Improved_Toilet", "SES_Score", "Household_Size", "Shared_Toilet", "Wealth_Index")]
+
 #### Helper functions ####
 fcn_lookup <- function(query_1, query_2 = NA, reference, value_column, transformation = "none"){
   out <- 0
@@ -157,7 +162,6 @@ for (row in 1:nrow(ebola_daily_total_dcast_cumulative)){
   ebola_daily_total_dcast_cumulative[row, "Last_Case"] <- max(days)
   ebola_daily_total_dcast_cumulative[row, "t_dur"] <- ebola_daily_total_dcast_cumulative[row, "Last_Case"] - ebola_daily_total_dcast_cumulative[row, "First_Case"]
 }
-
 
 #### Make sure we have all the cholera cases ####
 sum(cholera_daily$cases) == 22691
@@ -363,6 +367,12 @@ df_cumulative[df_cumulative$CHCODE > 2000 & df_cumulative$CHCODE < 3000,"Region"
 df_cumulative[df_cumulative$CHCODE > 3000 & df_cumulative$CHCODE < 4000,"Region"] <- "South"
 df_cumulative[df_cumulative$CHCODE > 4000 ,"Region"] <- "West"
 
+#### Add demographic data to cumulative datasets ####
+DHS_2008_summary <- aggregate(DHS_2008[,-1], by = list(DHS_2008$CHCODE), mean)
+names(DHS_2008_summary)[1] <- "CHCODE"
+
+df_cumulative <- left_join(df_cumulative, DHS_2008_summary, by = "CHCODE")
+
 #### Explore cumulative dataset ####
 plot(df_cumulative$Pop2012, df_cumulative$Pop2014)
 
@@ -502,6 +512,9 @@ names(cholera_cumulative_GIS) <- c("CHCODE", "Cholera_Cases", "Cholera_Onset", "
 cholera_cumulative_GIS <- full_join(cholera_cumulative_GIS, population[,c("CHCODE", "Total_2012")], by = "CHCODE")
 cholera_cumulative_GIS[is.na(cholera_cumulative_GIS$Cholera_Cases),"Cholera_Cases"] <- 0
 write.csv(cholera_cumulative_GIS, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/cholera_cumulative_GIS.csv")
+
+# df_cumulative
+write.csv(df_cumulative,"/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/df_cumulative.csv")
 
 #### Export df_daily ####
 write.csv(df_daily, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_cholera_daily.csv")
