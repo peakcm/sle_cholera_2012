@@ -56,19 +56,21 @@ fcn_lookup <- function(query_1, query_2 = NA, reference, value_column, transform
 cholera_line_list$date <- as.Date(cholera_line_list$Date_seen, format = "%m/%d/%y")
 cholera_line_list$date_num <- as.numeric(cholera_line_list$date ) - min(as.numeric(cholera_line_list$date ))
 
-cholera_line_list <- cholera_line_list[,c("Age", "Age.group", "Sex", "District", "Chiefdom", "Temp_CHCODE", "date", "date_num")]
-names(cholera_line_list)[6]
-names(cholera_line_list)[6] <- "CHCODE"
+cholera_line_list <- cholera_line_list[order(cholera_line_list$date, cholera_line_list$Temp_CHCODE),]
 
-cholera_line_list_melt <- melt(cholera_line_list, id.vars = c("Chiefdom", "District", "CHCODE", "date", "date_num"))
+cholera_line_list <- cholera_line_list[,c("Age", "Age.group", "Sex", "Temp_CHCODE", "date", "date_num")]
+names(cholera_line_list)[4]
+names(cholera_line_list)[4] <- "CHCODE"
 
-cholera_daily <- dcast(cholera_line_list_melt, formula = CHCODE + Chiefdom + District + date + date_num~ variable, fun.aggregate = length)
-cholera_daily <- cholera_daily[,c("CHCODE", "Chiefdom", "District", "date", "date_num", "Age")]
-names(cholera_daily) <- c("CHCODE", "Chiefdom", "District", "date", "date_num", "cases")
+cholera_line_list_melt <- melt(cholera_line_list, id.vars = c("CHCODE", "date", "date_num"))
 
-cholera_cumulative <- dcast(cholera_line_list_melt, formula = CHCODE + Chiefdom + District ~ variable, fun.aggregate = length)
-cholera_cumulative <- cholera_cumulative[,c("CHCODE", "Chiefdom", "District", "Age")]
-names(cholera_cumulative) <- c("CHCODE", "Chiefdom", "District", "cases")
+cholera_daily <- dcast(cholera_line_list_melt, formula = CHCODE + date + date_num~ variable, fun.aggregate = length)
+cholera_daily <- cholera_daily[,c("CHCODE", "date", "date_num", "Age")]
+names(cholera_daily) <- c("CHCODE", "date", "date_num", "cases")
+
+cholera_cumulative <- dcast(cholera_line_list_melt, formula = CHCODE  ~ variable, fun.aggregate = length)
+cholera_cumulative <- cholera_cumulative[,c("CHCODE", "Age")]
+names(cholera_cumulative) <- c("CHCODE", "cases")
 
 #### Manipulate line list ebola suspected data to daily and cumulative ####
 ebola_daily_suspected$date <- as.Date(ebola_daily_suspected$Date.of.symptom.onset, format = "%d-%b-%y")
@@ -115,6 +117,7 @@ for (chief in ebola_daily_total_dcast_cumulative$CHCODE){
 }
 
 #### Manipulate ebola cumulative datasets ####
+# Confirmed
 ebola_daily_confirmed_dcast_cumulative$First_Case <- NA
 ebola_daily_confirmed_dcast_cumulative$Last_Case <- NA
 ebola_daily_confirmed_dcast_cumulative$t_dur <- NA
@@ -126,6 +129,35 @@ for (row in 1:nrow(ebola_daily_confirmed_dcast_cumulative)){
     ebola_daily_confirmed_dcast_cumulative[row, "Last_Case"] <- days[length(days)]
     ebola_daily_confirmed_dcast_cumulative[row, "t_dur"] <- ebola_daily_confirmed_dcast_cumulative[row, "Last_Case"] - ebola_daily_confirmed_dcast_cumulative[row, "First_Case"]
 }
+
+# Suspected
+ebola_daily_suspected_dcast_cumulative$First_Case <- NA
+ebola_daily_suspected_dcast_cumulative$Last_Case <- NA
+ebola_daily_suspected_dcast_cumulative$t_dur <- NA
+
+for (row in 1:nrow(ebola_daily_suspected_dcast_cumulative)){
+  chief <- ebola_daily_suspected_dcast_cumulative[row, "CHCODE"]
+  days <- ebola_daily_suspected[ebola_daily_suspected$CHCODE == chief, "date_num"]
+  ebola_daily_suspected_dcast_cumulative[row, "First_Case"] <- days[1]
+  ebola_daily_suspected_dcast_cumulative[row, "Last_Case"] <- days[length(days)]
+  ebola_daily_suspected_dcast_cumulative[row, "t_dur"] <- ebola_daily_suspected_dcast_cumulative[row, "Last_Case"] - ebola_daily_suspected_dcast_cumulative[row, "First_Case"]
+}
+
+# Total
+ebola_daily_total_dcast_cumulative$First_Case <- NA
+ebola_daily_total_dcast_cumulative$Last_Case <- NA
+ebola_daily_total_dcast_cumulative$t_dur <- NA
+
+ebola_daily_total <- rbind(ebola_daily_confirmed, ebola_daily_suspected)
+
+for (row in 1:nrow(ebola_daily_total_dcast_cumulative)){
+  chief <- ebola_daily_total_dcast_cumulative[row, "CHCODE"]
+  days <- ebola_daily_total[ebola_daily_total$CHCODE == chief, "date_num"]
+  ebola_daily_total_dcast_cumulative[row, "First_Case"] <- days[1]
+  ebola_daily_total_dcast_cumulative[row, "Last_Case"] <- days[length(days)]
+  ebola_daily_total_dcast_cumulative[row, "t_dur"] <- ebola_daily_total_dcast_cumulative[row, "Last_Case"] - ebola_daily_total_dcast_cumulative[row, "First_Case"]
+}
+
 
 #### Make sure we have all the cholera cases ####
 sum(cholera_daily$cases) == 22691
@@ -151,20 +183,46 @@ dates <- seq(from = date_start, to = date_end, by = 1)
 date_num <- seq(from = 0, to = length(dates)-1, by = 1)
 
 df_daily <- data.frame("CHCODE" = rep(CHCODEs, each = length(dates)), "date" = rep(dates, times = length(CHCODEs)), "date_num" = rep(date_num, times = length(CHCODEs)))
+df_daily$confirmed_ebola <- NA
+df_daily$suspected_ebola <- NA
+df_daily$cholera <- NA
+df_daily$rain <- NA
 
-# Add confirmed ebola data
-df_daily$confirmed_ebola <- apply(df_daily[,c("CHCODE", "date")], MARGIN = 1, function(x) fcn_lookup(x[1], x[2], reference = ebola_daily_confirmed_dcast_daily[,c("CHCODE", "date")], ebola_daily_confirmed_dcast_daily$cases))
+for (i in unique(df_daily$date)){
+ 
+  # Confirmed Ebola
+  if (i %in% ebola_daily_confirmed_dcast_daily$date){
+  df_daily[df_daily$date == i,"confirmed_ebola"] <- left_join(df_daily[df_daily$date == i,], 
+                                                               ebola_daily_confirmed_dcast_daily[ebola_daily_confirmed_dcast_daily$date == i, c("CHCODE", "cases")], 
+                                                               by = c("CHCODE"))$cases
+  }
+  #Suspected Ebola
+  if (i %in% ebola_daily_suspected_dcast_daily$date){
+    df_daily[df_daily$date == i,"suspected_ebola"] <- left_join(df_daily[df_daily$date == i,], 
+                                                                ebola_daily_suspected_dcast_daily[ebola_daily_suspected_dcast_daily$date == i, c("CHCODE", "cases")], 
+                                                                by = c("CHCODE"))$cases
+  }
+  #Cholera
+  if (i %in% cholera_daily$date){
+    df_daily[df_daily$date == i,"cholera"] <- left_join(df_daily[df_daily$date == i,], 
+                                                        cholera_daily[cholera_daily$date == i, c("CHCODE", "cases")], 
+                                                                by = c("CHCODE"))$cases
+  }
+  cat(".")
+}
 
-# Add suspected ebola data
-df_daily$suspected_ebola <- apply(df_daily[,c("CHCODE", "date")], MARGIN = 1, function(x) fcn_lookup(x[1], x[2], reference = ebola_daily_suspected_dcast_daily[,c("CHCODE", "date")], ebola_daily_suspected_dcast_daily$cases))
+# Replacae NA with 0
+df_daily[is.na(df_daily$confirmed_ebola),"confirmed_ebola"] <- 0
+df_daily[is.na(df_daily$suspected_ebola),"suspected_ebola"] <- 0
+df_daily[is.na(df_daily$cholera),"cholera"] <- 0
 
-# Add total ebola
-df_daily$total_ebola <- df_daily$confirmed_ebola + df_daily$suspected_ebola
+# Add "total_ebola" field
+df_daily$total_ebola <- df_daily$suspected_ebola + df_daily$confirmed_ebola
 
-# Add cholera data
-df_daily$cholera <- 0
-cholera_daily_trim <- cholera_daily[cholera_daily$Case > 0,]
-df_daily$cholera <- apply(df_daily[,c("CHCODE", "date")], MARGIN = 1, function(x) fcn_lookup(x[1], x[2], reference = cholera_daily_trim[,c("CHCODE", "date")], cholera_daily_trim$Case))
+# Check if we have th expected number of cases
+sum(df_daily$confirmed_ebola) == 8358
+sum(df_daily$suspected_ebola) == 3545
+sum(df_daily$cholera) == 22691
 
 # Add days since the start of each diseasea class
 days_since_start_cholera <- seq(from = 0, to = length(dates)-1, by = 1)
@@ -176,7 +234,16 @@ days_since_start_ebola_confirmed <- c(rep(0, which(dates == min(ebola_daily_conf
 days_since_start_ebola_total <- c(rep(0, min(which(dates == min(ebola_daily_suspected$date)), which(dates == min(ebola_daily_confirmed$date))) - 1),
                                   seq(0, length(dates) - min(which(dates == min(ebola_daily_suspected$date)), which(dates == min(ebola_daily_confirmed$date)))))
 
-df_daily <- cbind(df_daily, "days_since_start_cholera" = rep(days_since_start_cholera, length(unique(CHCODEs))), "days_since_start_ebola_suspected" = rep(days_since_start_ebola_suspected, length(unique(CHCODEs))), "days_since_start_ebola_confirmed" = rep(days_since_start_ebola_confirmed, length(unique(CHCODEs))), "days_since_start_ebola_total" = rep(days_since_start_ebola_total, length(unique(CHCODEs))))
+# Check to see number of dates for each CHCODE
+for (chief in unique(df_daily$CHCODE)){
+  if (length(df_daily[df_daily$CHCODE == chief, "date"]) == 1345){cat(".")
+    } else {cat(chief)}
+}
+
+df_daily <- cbind(df_daily, "days_since_start_cholera" = rep(days_since_start_cholera, length(unique(CHCODEs))), 
+                  "days_since_start_ebola_suspected" = rep(days_since_start_ebola_suspected, length(unique(CHCODEs))),
+                  "days_since_start_ebola_confirmed" = rep(days_since_start_ebola_confirmed, length(unique(CHCODEs))), 
+                  "days_since_start_ebola_total" = rep(days_since_start_ebola_total, length(unique(CHCODEs))))
 
 # Add rolling count of cases
 df_daily$cholera_cumulative <- 0
@@ -207,6 +274,7 @@ for (chief in unique(df_daily$CHCODE)){
   if (max(df_daily[df_daily$CHCODE == chief, "total_ebola_cumulative"]) > 0){
     df_daily[df_daily$CHCODE == chief, "total_ebola_cumulative_proportion"] <- df_daily[df_daily$CHCODE == chief, "total_ebola_cumulative"]/max(df_daily[df_daily$CHCODE == chief, "total_ebola_cumulative"])
   }
+  cat(".")
 }
 
 #### Add Climate Prediction Center Rainfall data (New way) ####
@@ -231,10 +299,7 @@ for (file in files){
   } else{cat("x")}
 }
 
-summary(df_daily[is.na(df_daily$rain_avg)==1,"date"])
-
-ggplot(df_daily, aes(x = date, group = CHCODE, y = rain_avg, color = CHCODE)) +
-  geom_point()
+ggplot(df_daily, aes(x = date, group = CHCODE, y = rain_avg, color = CHCODE)) + geom_point()
 
 #### Confirm combined daily dataset is correct ####
 chief <- 3101
@@ -247,19 +312,19 @@ points(ebola_daily_suspected_dcast_daily[ebola_daily_suspected_dcast_daily$CHCOD
 
 chief <- 3410
 plot(df_daily[df_daily$CHCODE == chief,]$date, df_daily[df_daily$CHCODE == chief,]$cholera, type = "l")
-points(cholera_daily[cholera_daily$CHCODE == chief,]$date, cholera_daily[cholera_daily$CHCODE == chief,]$Case)
+points(cholera_daily[cholera_daily$CHCODE == chief,]$date, cholera_daily[cholera_daily$CHCODE == chief,]$cases)
 
 #### Combine cumulative datasets ####
 df_cumulative <- data.frame("CHCODE" = CHCODEs)
-df_cumulative$Chiefdom <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = population_2014[,c("CHCODE")], value_column = population_2014[,c("Chiefdom")], transformation = "as.character"))
-df_cumulative$District <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = population_2014[,c("CHCODE")], value_column = population_2014[,c("District")], transformation = "as.character"))
-df_cumulative$Pop2014 <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = population_2014[,c("CHCODE")], value_column = population_2014[,c("Total2014Inferred")]))
-df_cumulative$Pop2012 <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = population_2012[,c("CHCODE")], value_column = population_2012[,c("Pop_2012_est")]))
+df_cumulative$Chiefdom <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = population[,c("CHCODE")], value_column = population[,c("Chiefdom")], transformation = "as.character"))
+df_cumulative$District <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = population[,c("CHCODE")], value_column = population[,c("District")], transformation = "as.character"))
+df_cumulative$Pop2014 <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = population[,c("CHCODE")], value_column = population[,c("Total_2014")]))
+df_cumulative$Pop2012 <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = population[,c("CHCODE")], value_column = population[,c("Total_2012")]))
 
 df_cumulative$confirmed_ebola <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = ebola_daily_confirmed_dcast_cumulative[,c("CHCODE")], value_column = ebola_daily_confirmed_dcast_cumulative[,c("cases")]))
 df_cumulative$suspected_ebola <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = ebola_daily_suspected_dcast_cumulative[,c("CHCODE")], value_column = ebola_daily_suspected_dcast_cumulative[,c("cases")]))
 df_cumulative$total_ebola <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = ebola_daily_total_dcast_cumulative[,c("CHCODE")], value_column = ebola_daily_total_dcast_cumulative[,c("cases")]))
-df_cumulative$cholera <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = cholera_cumulative[,c("CHCODE")], value_column = cholera_cumulative[,c("Cumulative_Cases")]))
+df_cumulative$cholera <- sapply(df_cumulative$CHCODE, function(x) fcn_lookup(query_1 = x, reference = cholera_cumulative[,c("CHCODE")], value_column = cholera_cumulative[,c("cases")]))
 
 df_cumulative$confirmed_ebola_onset <- NA
 df_cumulative$suspected_ebola_onset <- NA
@@ -289,6 +354,7 @@ for (row in 1:nrow(df_cumulative)){
     df_cumulative[row, "cholera_onset"] <- min(df_daily[df_daily$CHCODE == chief & df_daily$cholera, "days_since_start_cholera"])
     df_cumulative[row, "cholera_duration"] <- max(df_daily[df_daily$CHCODE == chief & df_daily$cholera, "days_since_start_cholera"]) - df_cumulative[row, "cholera_onset"]
   }
+  cat(".")
 }
 
 df_cumulative$Region <- NA
@@ -307,27 +373,27 @@ plot(df_cumulative$cholera, df_cumulative$confirmed_ebola, log = "xy")
 plot(df_cumulative$cholera/df_cumulative$Pop2014, df_cumulative$total_ebola/df_cumulative$Pop2014, log = "xy")
 plot(df_cumulative$cholera/df_cumulative$Pop2012, df_cumulative$total_ebola/df_cumulative$Pop2014, log = "xy")
 
-hist(df_cumulative$confirmed_ebola_onset, breaks = 20)
+hist(df_cumulative$total_ebola_onset, breaks = 20)
 hist(df_cumulative$cholera_onset, breaks = 20)
-plot(df_cumulative$cholera_onset, df_cumulative$confirmed_ebola_onset)
-ggplot(df_cumulative, aes(x = cholera_onset, y = confirmed_ebola_onset, color = log(Pop2014+1))) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
-ggplot(df_cumulative, aes(x = cholera_onset, y = confirmed_ebola_onset, color = log(Pop2014+1), shape = Region)) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
+plot(df_cumulative$cholera_onset, df_cumulative$total_ebola_onset)
+ggplot(df_cumulative, aes(x = cholera_onset, y = total_ebola_onset, color = log(Pop2014+1))) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
+ggplot(df_cumulative, aes(x = cholera_onset, y = total_ebola_onset, color = log(Pop2014+1), shape = Region)) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
 
-ggplot(df_cumulative[df_cumulative$cholera_onset > 100,], aes(x = cholera_onset, y = confirmed_ebola_onset, color = log(Pop2014+1))) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
-ggplot(df_cumulative[df_cumulative$cholera_onset > 100,], aes(x = cholera_onset, y = confirmed_ebola_onset, color = log(Pop2014+1), shape = Region)) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
+ggplot(df_cumulative[df_cumulative$cholera_onset > 100,], aes(x = cholera_onset, y = total_ebola_onset, color = log(Pop2014+1))) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
+ggplot(df_cumulative[df_cumulative$cholera_onset > 100,], aes(x = cholera_onset, y = total_ebola_onset, color = log(Pop2014+1), shape = Region)) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
 
-hist(df_cumulative$confirmed_ebola_duration, breaks = 20)
+hist(df_cumulative$total_ebola_duration, breaks = 20)
 hist(df_cumulative$cholera_duration, breaks = 20)
-plot(df_cumulative$cholera_duration, df_cumulative$confirmed_ebola_duration)
-ggplot(df_cumulative, aes(x = cholera_duration, y = confirmed_ebola_duration, color = log(Pop2014+1))) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
-ggplot(df_cumulative, aes(x = cholera_duration, y = confirmed_ebola_duration, color = log(Pop2014+1), shape = Region)) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
+plot(df_cumulative$cholera_duration, df_cumulative$total_ebola_duration)
+ggplot(df_cumulative, aes(x = cholera_duration, y = total_ebola_duration, color = log(Pop2014+1))) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
+ggplot(df_cumulative, aes(x = cholera_duration, y = total_ebola_duration, color = log(Pop2014+1), shape = Region)) + geom_point(size = 4) + theme_classic() + stat_smooth(method = "lm")
 
-summary(lm(formula = df_cumulative$confirmed_ebola_duration ~ df_cumulative$cholera_duration + df_cumulative$Pop2014))
-summary(lm(formula = df_cumulative$confirmed_ebola_duration ~ df_cumulative$cholera_duration + df_cumulative$Pop2014 + factor(df_cumulative$Region)))
+summary(lm(formula = df_cumulative$total_ebola_duration ~ df_cumulative$cholera_duration + df_cumulative$Pop2014))
+summary(lm(formula = df_cumulative$total_ebola_duration ~ df_cumulative$cholera_duration + df_cumulative$Pop2014 + factor(df_cumulative$Region)))
 
 # Which chiefdoms were affected
 cholera_affected <- df_cumulative[df_cumulative$cholera > 0,"CHCODE"]
-ebola_affected <- df_cumulative[df_cumulative$confirmed_ebola > 0,"CHCODE"]
+ebola_affected <- df_cumulative[df_cumulative$total_ebola > 0,"CHCODE"]
 
 length(cholera_affected)
 length(ebola_affected)
@@ -340,42 +406,42 @@ d <- setdiff(df_cumulative$CHCODE, union(cholera_affected, ebola_affected)) # No
 table <- epitable(length(a), length(b), length(c), length(d))
 epitab(table, method = "riskratio")
 
-cat("Chiefdoms affected by cholera were not any more likely to report ebola (RR = 0.99)")
+cat("Chiefdoms affected by cholera were not any more likely to report ebola (RR = 0.83)")
 
 #### Compare epi curves by chiefdom ####
-ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$confirmed_ebola > 10,"CHCODE"],]) +
-  geom_line(aes(x = days_since_start_ebola_confirmed, y = confirmed_ebola)) +
+ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$total_ebola > 10,"CHCODE"],]) +
+  geom_line(aes(x = days_since_start_ebola_total, y = total_ebola)) +
   geom_line(aes(x = days_since_start_cholera, y = cholera), color = "red") +
   xlim(0, 500) +
   facet_wrap(~CHCODE, scales = "free_y")
 
-ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$confirmed_ebola > 10,"CHCODE"],]) +
+ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$total_ebola > 10,"CHCODE"],]) +
   geom_line(aes(x = date_num, y = cholera), color = "red", alpha = 0.8) +
-  geom_line(aes(x = date_num - 365*2, y = confirmed_ebola), alpha = 0.8) +
+  geom_line(aes(x = date_num - 365*2, y = total_ebola), alpha = 0.8) +
   xlim(0, 500) +
   facet_wrap(~CHCODE, scales = "free_y")
 
-ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$confirmed_ebola > 10,"CHCODE"],]) +
+ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$total_ebola > 10,"CHCODE"],]) +
   geom_line(aes(x = date_num, y = cholera_cumulative), color = "red", alpha = 0.8) +
-  geom_line(aes(x = date_num - 365*2, y = confirmed_ebola_cumulative), alpha = 0.8) +
+  geom_line(aes(x = date_num - 365*2, y = total_ebola_cumulative), alpha = 0.8) +
   xlim(0, 500) +
   facet_wrap(~CHCODE, scales = "free_y")
 
-ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$confirmed_ebola > 10,"CHCODE"],]) +
+ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$total_ebola > 10,"CHCODE"],]) +
   geom_line(aes(x = days_since_start_cholera, y = cholera_cumulative_proportion), color = "red", alpha = 0.8) +
-  geom_line(aes(x = days_since_start_ebola_confirmed, y = confirmed_ebola_cumulative_proportion), alpha = 0.8) +
+  geom_line(aes(x = days_since_start_ebola_total, y = total_ebola_cumulative_proportion), alpha = 0.8) +
   xlim(0, 500) +
   facet_wrap(~CHCODE, scales = "free_y")
 
-ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$confirmed_ebola > 10,"CHCODE"],]) +
+ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$total_ebola > 10,"CHCODE"],]) +
   geom_line(aes(x = date_num, y = cholera_cumulative_proportion), color = "red", alpha = 0.8) +
-  geom_line(aes(x = date_num - 365*2, y = confirmed_ebola_cumulative_proportion), alpha = 0.8) +
+  geom_line(aes(x = date_num - 365*2, y = total_ebola_cumulative_proportion), alpha = 0.8) +
   xlim(0, 500) +
   facet_wrap(~CHCODE, scales = "free_y")
 
-ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$confirmed_ebola > 100,"CHCODE"],]) +
+ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$total_ebola > 100,"CHCODE"],]) +
   geom_line(aes(x = date_num, y = cholera_cumulative_proportion), color = "red", alpha = 0.8) +
-  geom_line(aes(x = date_num - 365*2, y = confirmed_ebola_cumulative_proportion), alpha = 0.8) +
+  geom_line(aes(x = date_num - 365*2, y = total_ebola_cumulative_proportion), alpha = 0.8) +
   xlim(0, 500) +
   facet_wrap(~CHCODE, scales = "free_y")
 
@@ -386,6 +452,8 @@ df_daily_country_confirmed_ebola$confirmed_ebola_7dayMA <- ma(df_daily_country_c
 df_daily_country_suspected_ebola <- df_daily %>% group_by(date) %>% summarize(suspected_ebola = sum(suspected_ebola))
 df_daily_country_suspected_ebola$suspected_ebola_7dayMA <- ma(df_daily_country_suspected_ebola$suspected_ebola,order = 7 )
 
+df_daily_country_total_ebola <- df_daily %>% group_by(date) %>% summarize(total_ebola = sum(total_ebola))
+df_daily_country_total_ebola$total_ebola_7dayMA <- ma(df_daily_country_total_ebola$total_ebola,order = 7 )
 
 df_daily_country_cholera <- df_daily %>% group_by(date) %>% summarize(cholera = sum(cholera))
 df_daily_country_cholera$cholera_7dayMA <- ma(df_daily_country_cholera$cholera,order = 7 )
@@ -396,13 +464,15 @@ df_daily_country_cholera$cholera_7dayMA <- ma(df_daily_country_cholera$cholera,o
 ggplot() +
   theme_bw() +
   geom_bar(data = df_daily_country_cholera, aes(x = date, y = cholera), color = "pink", stat = "identity", alpha = 0.5) +
-  geom_bar(data = df_daily_country_confirmed_ebola, aes(x=date-365*2, y=confirmed_ebola), color = "skyblue", stat = "identity", alpha = 0.5) +
+  geom_bar(data = df_daily_country_total_ebola, aes(x=date-365*2, y=total_ebola), color = "skyblue", stat = "identity", alpha = 0.5) +
   geom_line(data = df_daily_country_cholera, aes(x = date, y = cholera_7dayMA), color = "red") +
-  geom_line(data = df_daily_country_confirmed_ebola, aes(x=date-365*2, y=confirmed_ebola_7dayMA), color = "blue") +
-  scale_x_date(limits = c(as.Date("2012-01-01"), as.Date("2014-01-01")), name = "Month", date_breaks = "1 month", date_labels = "%b") +
-  ylab("Cases") +
-  ggtitle("Cholera (red) and Confirmed Ebola (blue) cases by month\n{Ebola shifted by -2 years}")
+  geom_line(data = df_daily_country_total_ebola, aes(x=date-365*2, y=total_ebola_7dayMA), color = "blue") +
+  scale_x_date(limits = c(as.Date("2012-01-01"), as.Date("2014-01-01")), name = "Month", date_breaks = "2 month", date_labels = "%b") +
+  ylab("Daily Cases") +
+  theme(text = element_text(size = 8)) +
+  ggtitle("Cholera (red) and Total Ebola (blue) Cases\n{Ebola shifted by -2 years}")
   
+ggsave(filename = "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures/20160707_epicurves.pdf", height = 4, width = 4, units = "in")
 
 #### Save workspace ####
 save.image("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Data.RData")
@@ -411,14 +481,12 @@ save.image("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Dat
 load("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Data.RData")
 
 #### Export data as csv files for ArcGIS ####
-names(ebola_daily_confirmed_dcast_cumulative)
-names(ebola_daily_confirmed_dcast_cumulative) <- c("CHCODE", "Chiefdom", "District", "Ebola_Cases", "Last_Ebola_Case", "First_Ebola_Case", "t_dur_ebola")
-write.csv(ebola_daily_confirmed_dcast_cumulative, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_cumulative.csv")
+names(ebola_daily_total_dcast_cumulative)
+names(ebola_daily_total_dcast_cumulative) <- c("CHCODE", "Ebola_Cases", "Last_Ebola_Case", "First_Ebola_Case", "t_dur_ebola")
+write.csv(ebola_daily_total_dcast_cumulative, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/total_ebola_cumulative.csv")
 
-cholera_cumulative_GIS <- cholera_cumulative[cholera_cumulative$Any_Case == 1,c("CHCODE","Cumulative_Cases", "onset_num", "Last_Case")]
-cholera_cumulative_GIS$Last_Case <- as.numeric(as.Date(cholera_cumulative_GIS$Last_Case) - as.Date("2012-01-01"))
-names(cholera_cumulative_GIS) <- c("CHCODE", "Cholera_Cases", "Cholera_Onset", "Cholera_Last_Case")
-cholera_cumulative_GIS$t_dur_cholera <- cholera_cumulative_GIS$Cholera_Last_Case - cholera_cumulative_GIS$Cholera_Onset
+cholera_cumulative_GIS <- cholera_cumulative[,c("CHCODE","cases", "First_Case", "Last_Case", "t_dur")]
+names(cholera_cumulative_GIS) <- c("CHCODE", "Cholera_Cases", "Cholera_Onset", "Cholera_Last_Case", "Cholera_Duration")
 write.csv(cholera_cumulative_GIS, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/cholera_cumulative_GIS.csv")
 
 #### Export df_daily ####
