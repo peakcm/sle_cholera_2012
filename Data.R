@@ -153,8 +153,8 @@ ebola_daily_total <- rbind(ebola_daily_confirmed, ebola_daily_suspected)
 for (row in 1:nrow(ebola_daily_total_dcast_cumulative)){
   chief <- ebola_daily_total_dcast_cumulative[row, "CHCODE"]
   days <- ebola_daily_total[ebola_daily_total$CHCODE == chief, "date_num"]
-  ebola_daily_total_dcast_cumulative[row, "First_Case"] <- days[1]
-  ebola_daily_total_dcast_cumulative[row, "Last_Case"] <- days[length(days)]
+  ebola_daily_total_dcast_cumulative[row, "First_Case"] <- min(days)
+  ebola_daily_total_dcast_cumulative[row, "Last_Case"] <- max(days)
   ebola_daily_total_dcast_cumulative[row, "t_dur"] <- ebola_daily_total_dcast_cumulative[row, "Last_Case"] - ebola_daily_total_dcast_cumulative[row, "First_Case"]
 }
 
@@ -481,12 +481,26 @@ save.image("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Dat
 load("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Data.RData")
 
 #### Export data as csv files for ArcGIS ####
-names(ebola_daily_total_dcast_cumulative)
-names(ebola_daily_total_dcast_cumulative) <- c("CHCODE", "Ebola_Cases", "Last_Ebola_Case", "First_Ebola_Case", "t_dur_ebola")
-write.csv(ebola_daily_total_dcast_cumulative, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/total_ebola_cumulative.csv")
+# Ebola
+ebola_cumulative <- ebola_daily_total_dcast_cumulative
+ebola_cumulative <- full_join(ebola_cumulative, ebola_daily_confirmed_dcast_cumulative[,c("CHCODE", "cases", "First_Case", "Last_Case", "t_dur")], by = "CHCODE")
+ebola_cumulative <- full_join(ebola_cumulative, ebola_daily_suspected_dcast_cumulative[,c("CHCODE", "cases", "First_Case", "Last_Case", "t_dur")], by = "CHCODE")
+names(ebola_cumulative)
+names(ebola_cumulative) <- c("CHCODE",
+                             "Total_Ebola_Cases", "Total_Ebola_First_Case", "Total_Ebola_Late_Case", "Total_Ebola_t_dur",
+                             "Confirmed_Ebola_Cases", "Confirmed_Ebola_First_Case", "Confirmed_Ebola_Last_Case", "Confirmed_Ebola_t_dur",
+                             "Suspected_Ebola_Cases", "Suspected_Ebola_First_Case", "Suspected_Ebola_Last_Case", "Suspected_Ebola_t_dur")
+ebola_cumulative <- full_join(ebola_cumulative, population[,c("CHCODE", "Total_2014")], by = "CHCODE")
+ebola_cumulative[is.na(ebola_cumulative$Total_Ebola_Cases),"Total_Ebola_Cases"] <- 0
+ebola_cumulative[is.na(ebola_cumulative$Confirmed_Ebola_Cases),"Confirmed_Ebola_Cases"] <- 0
+ebola_cumulative[is.na(ebola_cumulative$Suspected_Ebola_Cases),"Suspected_Ebola_Cases"] <- 0
+write.csv(ebola_cumulative, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_cumulative.csv")
 
+# Cholera
 cholera_cumulative_GIS <- cholera_cumulative[,c("CHCODE","cases", "First_Case", "Last_Case", "t_dur")]
 names(cholera_cumulative_GIS) <- c("CHCODE", "Cholera_Cases", "Cholera_Onset", "Cholera_Last_Case", "Cholera_Duration")
+cholera_cumulative_GIS <- full_join(cholera_cumulative_GIS, population[,c("CHCODE", "Total_2012")], by = "CHCODE")
+cholera_cumulative_GIS[is.na(cholera_cumulative_GIS$Cholera_Cases),"Cholera_Cases"] <- 0
 write.csv(cholera_cumulative_GIS, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/cholera_cumulative_GIS.csv")
 
 #### Export df_daily ####
