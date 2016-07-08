@@ -3,6 +3,7 @@
 
 #### Load libraries ####
 library(Hmisc)
+library(dplyr)
 
 #### Notes ####
 # The cholera and ebola epidemics in chiefdoms differed with respect to cases, CAR, order of onset, presence of cases.
@@ -11,21 +12,70 @@ library(Hmisc)
 
 #### Load data ####
 load("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/R codes/Data.RData")
+# Note df_cumulative has lots of demographic data
+
+#### Load Reff data ####
+ebola_Reff_summary <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/ebola_Reff_summary.csv")
+names(ebola_Reff_summary) <- c("CHCODE", "days_Reff_over_1_ebola", "total_cases_ebola", "total_cases_generated_ebola", "total_exported_cases_ebola", "total_internal_cases_generated_ebola", "total_imported_cases_ebola", "export_import_ratio_ebola")
+
+cholera_Reff_summary <- read.csv("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/cholera_Reff_summary.csv")
+names(cholera_Reff_summary) <- c("CHCODE", "days_Reff_over_1_cholera", "total_cases_cholera", "total_cases_generated_cholera", "total_exported_cases_cholera", "total_internal_cases_generated_cholera", "total_imported_cases_cholera", "export_import_ratio_cholera")
 
 #### Function ####
 fcn_test <- function(x, y, plot = TRUE){
   scatterplot = plot(x, y)
-  p = round(rcorr(x,y, type="pearson")$P[1,2], 4)
+  ro = round(rcorr(x,y, type="spearman")$r[1,2], 4)
 
   if (plot){scatterplot}
   
-  return(c(p = p))
+  return(c(ro = ro))
 }
 
 #### Test function ####
 fcn_test(x = seq(1,20), y = seq(1,20))
-fcn_test(x = seq(1,20), y = seq(1,20) + rnorm(20, mean = 10))
+fcn_test(x = seq(1,20), y = seq(1,20) + 20*runif(20))
 fcn_test(x = seq(1,20), y = rnorm(20, mean = 5))
+
+#### Look at all pairs ####
+
+df_cumulative_rcorr <- df_cumulative %>% select(CHCODE, Pop2014, Pop2012, total_ebola, cholera, total_ebola_onset, cholera_onset, total_ebola_duration, cholera_duration, Prop_Urban, Education, Prop_Improved_Water_Source, Prop_Improved_Toilet, SES_Score, Household_Size, Shared_Toilet, Wealth_Index) %>%
+  mutate(total_ebola_CAR = total_ebola / Pop2014,
+         cholera_CAR = cholera / Pop2012) %>% apply(2, as.numeric)
+
+df_cumulative_rcorr <- data.frame(df_cumulative_rcorr) %>% 
+  left_join(ebola_Reff_summary[,c("CHCODE", "days_Reff_over_1_ebola", "export_import_ratio_ebola")], by = "CHCODE") %>%
+  left_join(cholera_Reff_summary[,c("CHCODE", "days_Reff_over_1_cholera", "export_import_ratio_cholera")], by = "CHCODE")
+
+out <- rcorr(as.matrix(df_cumulative_rcorr), type = "spearman")
+View(out$r)
+
+# Adjust for multiple testing
+num_disease_metrics <- 14
+num_DHS_metrics <- 8
+num_tests <- (num_disease_metrics*(num_disease_metrics-1) + num_disease_metrics*num_DHS_metrics)/2
+
+out_sig <- out$r * (out$P < 0.05/num_tests)
+out_sig[out_sig==0] <- NA
+# for (i in 1:nrow(out_sig)){
+#   for (j in 1:ncol(out_sig)){
+#     if (i <= j){out_sig[i,j] <- NA}
+#   }
+# }
+cat("The minimum strength of association detected", min(abs(out_sig), na.rm = TRUE))
+cat("The adjusted p threshold is ", round(0.05/num_tests, 5))
+View(out_sig)
+
+# Larger population sizes were associated with more cases, earlier onset, longer duration, and more days with Reff>1
+sort(out_sig[, "Pop2014"], decreasing = TRUE)
+
+# More cases were associated with longer outbreaks, more cases of the other disease, more source-like behavior, earlier onset, more days with Reff>1
+sort(out_sig[, "cholera"], decreasing = TRUE)
+sort(out_sig[, "total_ebola"], decreasing = TRUE)
+
+sort(out_sig[, "cholera"], decreasing = TRUE)
+
+#### Save dataset ####
+write.csv(df_cumulative_rcorr, "/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/df_cumulative_rcorr.csv")
 
 #### CAR ####
 # Cases
