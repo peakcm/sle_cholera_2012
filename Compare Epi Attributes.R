@@ -108,7 +108,7 @@ corrplot(subset, type="lower",  tl.col="black", tl.srt=45, p.mat = subset.p, sig
          tl.cex = 0.5, cl.cex = 0.4, mar = c(1,1,5,1))
 dev.off()
 
-#### corrplot of disease-demographic associations ####
+#### Disease-Demographic Figure ####
 selection_disease <- c("Cholera Cases", "Cholera Attack Rate", "Cholera Duration", "Cholera Onset", "Ebola Cases", "Ebola Attack Rate", "Ebola Duration", "Ebola Onset")
 keepers_disease <- as.numeric(sapply(selection_disease, function(x) which(row.names(out$r) %in% x)))
 
@@ -136,6 +136,65 @@ sig.level = 0.05 / sum(n_tests_disease_disease + n_tests_disease_demographic)
 
 setwd("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures/")
 pdf("20160709_Disease_Demographic_Spearman.pdf", 5,5)
+corrplot(subset, tl.col="black", tl.srt=45, p.mat = subset.p, sig.level = sig.level, insig = "blank",cl.pos = "n",
+         tl.cex = 0.5, cl.cex = 0.4, diag = FALSE, mar = c(5,1,3,1))
+dev.off()
+
+#### corrplot of disease-disease associations ####
+selection <- c("Cholera Cases", "Cholera Attack Rate", "Cholera Duration", "Cholera Onset", "Cholera Days R>1","Cholera Export/Import Ratio", "Ebola Cases", "Ebola Attack Rate", "Ebola Duration", "Ebola Onset", "Ebola Days R>1", "Ebola Export/Import Ratio")
+
+keepers <- as.numeric(sapply(selection, function(x) which(row.names(out$r) %in% x)))
+
+# For correlations
+subset <- data.frame(out$r, row.names = NULL)
+subset <- subset[keepers, keepers]
+row.names(subset) <- selection
+names(subset) <- selection
+subset <- as.matrix(subset)
+
+# For p-values
+subset.p <- data.frame(out$P, row.names = NULL)
+subset.p <- subset.p[keepers, keepers]
+subset.p <- as.matrix(subset.p)
+
+n_tests_disease_disease =  length(selection)^2/2
+n_tests_disease_demographic = 0
+sig.level = 0.05 / sum(n_tests_disease_disease + n_tests_disease_demographic)
+
+setwd("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures/")
+pdf("20160709_Supplemental_Disease_Disease_Spearman.pdf", 5,5)
+corrplot(subset, type="lower",  tl.col="black", tl.srt=45, p.mat = subset.p, sig.level = sig.level, insig = "blank",
+         tl.cex = 0.5, cl.cex = 0.4, mar = c(3,1,5,1))
+dev.off()
+
+#### Supplemental disease-demographic figure ####
+selection_disease <- c("Cholera Cases", "Cholera Attack Rate", "Cholera Duration", "Cholera Onset" ,"Cholera Days R>1","Cholera Export/Import Ratio", "Ebola Cases", "Ebola Attack Rate", "Ebola Duration", "Ebola Onset", "Ebola Days R>1", "Ebola Export/Import Ratio")
+keepers_disease <- as.numeric(sapply(selection_disease, function(x) which(row.names(out$r) %in% x)))
+
+selection_demographic <- c("Population", "Density", "Density (Weighted)", "Education", "SES", "Wealth Index", "Urban", "Improved Water", "Improved Sanitation", "Household Size", "Coastal")
+keepers_demographic <- as.numeric(sapply(selection_demographic, function(x) which(row.names(out$r) %in% x)))
+
+selection <- c(selection_disease, selection_demographic)
+keepers <- as.numeric(sapply(selection, function(x) which(row.names(out$r) %in% x)))
+
+# For correlations
+subset <- data.frame(out$r, row.names = NULL)
+subset <- subset[keepers_disease, keepers_demographic]
+row.names(subset) <- selection_disease
+names(subset) <- selection_demographic
+subset <- as.matrix(subset)
+
+# For p-values
+subset.p <- data.frame(out$P, row.names = NULL)
+subset.p <- subset.p[keepers_disease, keepers_demographic]
+subset.p <- as.matrix(subset.p)
+
+n_tests_disease_disease =  0
+n_tests_disease_demographic = (length(selection_disease)*length(selection_demographic))
+sig.level = 0.05 / sum(n_tests_disease_disease + n_tests_disease_demographic)
+
+setwd("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Figures/")
+pdf("20160709_Supplemental_Disease_Demographic_Spearman.pdf", 5,5)
 corrplot(subset, tl.col="black", tl.srt=45, p.mat = subset.p, sig.level = sig.level, insig = "blank",cl.pos = "n",
          tl.cex = 0.5, cl.cex = 0.4, diag = FALSE, mar = c(5,1,3,1))
 dev.off()
