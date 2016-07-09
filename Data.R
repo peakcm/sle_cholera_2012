@@ -9,6 +9,7 @@ require(rgdal)
 require(maps)
 library(fields)
 library(geoR)
+library(dismo)
 library(RColorBrewer)
 library(foreign)
 
@@ -35,6 +36,50 @@ ggplot(Admin3.map, aes(x = long, y = lat, group=group)) +
 DHS_2008 <- read.dbf("/Users/peakcm/Documents/2014 Cholera OCV/Data - Analysis/Data Files/DHS_2008_Closest_CHCODE.dbf")
 names(DHS_2008) <- c("Object_ID", "Join_Count", "Target_FID", "v001", "Lat", "Lon", "Urban", "Prop_Urban", "Education", "v113", "Prop_Improved_Water_Source", "v115", "v116", "Prop_Improved_Toilet", "SES_Score", "Household_Size", "v155", "Shared_Toilet", "v190", "Wealth_Index","v191_2", "Object_ID", "ID", "Chiefdom", "District", "CHCODE", "Orig_FID", "Shape_leng")
 DHS_2008 <- DHS_2008[,c("CHCODE", "Prop_Urban", "Education", "Prop_Improved_Water_Source", "Prop_Improved_Toilet", "SES_Score", "Household_Size", "Shared_Toilet", "Wealth_Index")]
+
+#### Import World Pop Data ####
+habitable_area <- read.dbf("/Users/peakcm/Documents/2014 Cholera OCV/Data - Raw/Population/WorldPop/Habitable_Area.dbf")
+names(habitable_area) <- c("ObjectID", "CHCODE", "Count_Raster", "Area", "Habitable_Area")
+habitable_area$Area_sq_km <- habitable_area$Count_Raster / 100
+
+RasterPointsXY <- read.dbf("/Users/peakcm/Documents/2014 Cholera OCV/Data - Raw/Population/WorldPop/20160709_RasterPointsXY.dbf")
+RasterPointsXY <- data.frame(cbind(Lat = RasterPointsXY$Long, Long = RasterPointsXY$Lat, pop = RasterPointsXY$grid_code)) #Need to switch lat and long
+names(RasterPointsXY)
+
+coords <- SpatialPoints(RasterPointsXY[,c("Long", "Lat")])
+points.df <- SpatialPointsDataFrame(coords, RasterPointsXY)
+if (is.na(proj4string(points.df))){
+  proj4string(points.df) <- proj4string(Admin3)
+}
+plot(Admin3, col = "red")
+plot(points.df[seq(1, nrow(points.df), by = nrow(points.df)/500),], pch = 20, cex = 1, add = T)
+
+data_WorldPopPoints_CHCODE <- cbind(points.df, over(points.df, Admin3))
+data_WorldPopPoints_CHCODE <- data_WorldPopPoints_CHCODE[is.na(data_WorldPopPoints_CHCODE$CHCODE) == 0,]
+head(data_WorldPopPoints_CHCODE)
+
+rm(coords)
+rm(RasterPointsXY)
+rm(points.df)
+
+# Check data
+data_WorldPopPoints_CHCODE_summary <- data_WorldPopPoints_CHCODE %>% group_by(CHCODE) %>%
+  summarize(pop_sum = sum(pop),
+            pop_avg = mean(pop),
+            pop_median = median(pop),
+            pop_avg_per_km = mean(pop*100),
+            pop_median_per_km = median(pop*100),
+            density_per_km = sum(pop) / length(pop) /(10*10),
+            weighted_density_per_km = 100*weighted.mean(pop, pop/sum(pop)))
+View(data_WorldPopPoints_CHCODE_summary)
+
+rcorr(data_WorldPopPoints_CHCODE_summary$density_per_km, data_WorldPopPoints_CHCODE_summary$weighted_density_per_km, type = "spearman")
+plot(data_WorldPopPoints_CHCODE_summary[order(data_WorldPopPoints_CHCODE_summary$density_per_km), ]$weighted_density_per_km)
+
+#### Calculate Population Density ####
+population <- left_join(population, habitable_area[,c("CHCODE","Count_Raster", "Habitable_Area")])
+population$density_area_2012 <- population$Total_2012 / (population$Count_Raster / 100)
+population$density_habitable_area_2012 <- population$Total_2012 / (population$Habitable_Area / 100)
 
 #### Helper functions ####
 fcn_lookup <- function(query_1, query_2 = NA, reference, value_column, transformation = "none"){
@@ -373,6 +418,16 @@ names(DHS_2008_summary)[1] <- "CHCODE"
 
 df_cumulative <- left_join(df_cumulative, DHS_2008_summary, by = "CHCODE")
 
+#### Add density data to cumulative datasets ####
+population <- left_join(population, data_WorldPopPoints_CHCODE_summary[,c("CHCODE", "pop_sum", "weighted_density_per_km")], by = "CHCODE")
+
+population <- left_join(population, habitable_area[,c("CHCODE", "Area_sq_km")], by = "CHCODE")
+population$Pop_per_sq_km <- population$Total_2014 / population$Area_sq_km
+
+rcorr(population$Pop_per_sq_km, population$weighted_density_per_km)
+
+df_cumulative <- left_join(df_cumulative, population[,c("CHCODE", "weighted_density_per_km", "Pop_per_sq_km")])
+
 #### Explore cumulative dataset ####
 plot(df_cumulative$Pop2012, df_cumulative$Pop2014)
 
@@ -418,7 +473,7 @@ epitab(table, method = "riskratio")
 
 cat("Chiefdoms affected by cholera were not any more likely to report ebola (RR = 0.83)")
 
-#### Compare epi curves by chiefdom ####
+#### Plot epi curves by chiefdom ####
 ggplot(df_daily[df_daily$CHCODE %in% df_cumulative[df_cumulative$total_ebola > 10,"CHCODE"],]) +
   geom_line(aes(x = days_since_start_ebola_total, y = total_ebola)) +
   geom_line(aes(x = days_since_start_cholera, y = cholera), color = "red") +
