@@ -132,8 +132,8 @@ ebola_df_use$area <- NA
 
 for (chief in unique(ebola_df_use$CHCODE)){
   days <- data.frame(ebola_df_use)[ebola_df_use$CHCODE == chief,"Day"]
-  rain <- df_daily[df_daily$CHCODE == chief & df_daily$Day %in% days,"rain_avg"]
-  area <- df_daily[df_daily$CHCODE == chief & df_daily$Day %in% days,"area"]
+  rain <- df_daily[df_daily$CHCODE == chief & df_daily$date %in% days,"rain_avg"]
+  area <- df_daily[df_daily$CHCODE == chief & df_daily$date %in% days,"area"]
   if (length(rain)==length(days)){
     ebola_df_use[ebola_df_use$CHCODE == chief, "rain_avg"] <- rain
     ebola_df_use[ebola_df_use$CHCODE == chief, "rain_avg_lag7"] <- c(rain[8:length(days)], rep(NA,7))
