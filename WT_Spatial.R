@@ -3,9 +3,13 @@
 # Requires:
 # Case data
 # Weight Matrix formatted as three columns: id_source, id_destination, weight
+# Written by Corey Peak (peak@mail.harvard.edu)
+
+# Chiefdom is the Admin 3 poplation unit at which level the case count data are aggregated by day.
 
 #### Helper Function: make_arrays ####
 make_arrays <- function(id.var, date.var){
+  
   # Numerator array dimensions are row:infected, column:infector, z:chiefdom
   numerator_array <- array(rep(0, (length(unique(date.var)))^2*length(unique(id.var))), dim=c(length(unique(date.var)), length(unique(date.var)), length(unique(id.var))))
   
@@ -134,7 +138,7 @@ calculate_Reff <- function(df, quotient_array, internal_Reff_array, id_array_key
     df[df$id == id, "Reff_internal"] <- internal_Reff_array[,,id_key] / df[df$id == id, "case"]
     df[df$id == id & is.na(df$Reff_internal)==1, "Reff_internal"] <- 0
     
-    cat("/nID Number", id)
+    # cat("\nID Number", id)
   }
   # Calculate Reff_external
   df[,"Reff_external"]  <- round(df[,"Reff"] -  df[,"Reff_internal"], 6)
@@ -143,9 +147,6 @@ calculate_Reff <- function(df, quotient_array, internal_Reff_array, id_array_key
   
   return(df)
 }
-
-#### Combine Functions ####
-
 
 #### Summary Function ####
 WT_Spatial_Summary <- function(df){
@@ -159,4 +160,20 @@ WT_Spatial_Summary <- function(df){
               export_import_ratio = total_exported_cases / (0.001+total_imported_cases))
 }
 
+#### To practice, here are some play data ####
+days <- 1:6
+id.var_play <- rep(c("A", "B"), each = length(days))
+date.var_play <- rep(days, length(unique(id.var_play)))
+case.var_play <- c(0,20,40,80,20,0,
+                   0,5,0,1,0,0)
 
+tau_play <- c(0, 0.3, 0.3, 0.2, 0.1, 0.1, 0)
+plot(tau_play, type = "l", xlab = "Days", ylab = "Generation Interval Density")
+
+weight_play <- data.frame(id_source = c("A","A","B","B"), id_destination = c("A", "B", "A", "B"), weight = c(1,0.5,0.5,1))
+weight_play
+
+play_output <- WT_Spatial(id.var = id.var_play, date.var = date.var_play, case.var = case.var_play, weights = weight_play, generation_interval = tau_play)
+play_output
+
+WT_Spatial_Summary(play_output)
